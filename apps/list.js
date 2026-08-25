@@ -1,30 +1,39 @@
 import fs from 'node:fs'
 import _ from 'lodash'
 import Config from '../model/config.js'
-import MemeApi from '../model/memeApi.js'
 import MemeIndex from '../model/memeIndex.js'
 import { renderGrid } from '../utils/gridImage.js'
 import { dataPath, ensureDir, cleanupStale, unlinkQuietly } from '../utils/file.js'
 import { isBlackUser } from '../utils/black.js'
 import { logPrefix } from '../constants/path.js'
 
+/** 群里发的 Web 站入口，统一文案；图里不画链接（图上的 URL 点不了） */
+function webLine () {
+  if (!Config.get('enableWeb')) return ''
+  return `🔍 搜索预览：${Config.getWebUrl()}/memes`
+}
+
 /**
- * 渲染一页列表图并缓存。
- * 服务端 render_list 的字号是固定的、不随数量缩放——
- * 全量 830 个会渲染成 4247x5260 的长图，发到 QQ 压缩后字全糊；
- * 80 个/页约 1007x1410（3 列），字才清晰。
+ * 渲染一页列表图，命中缓存就直接用。
+ *
+ * 和搜索/分类共用自己拼的网格图：服务端 render_list 只画关键词加占位图标，
+ * 看不到表情长什么样。列表分页是固定切片、翻页会反复看同一页，所以落盘复用。
  */
-async function renderPage (codes, cacheName) {
+async function renderPage (codes, page, totalPages, cacheName) {
   const loc = dataPath('list_cache', cacheName)
-  if (Config.get('enablePreviewCache') && fs.existsSync(loc)) {
-    return loc
-  }
-  const { buffer, contentType } = await MemeApi.renderList(codes)
+  if (Config.get('enablePreviewCache') && fs.existsSync(loc)) return loc
   ensureDir('list_cache')
-  const ext = contentType.split('/')[1] || 'png'
-  const finalLoc = loc.replace(/\.\w+$/, `.${ext}`)
-  fs.writeFileSync(finalLoc, buffer)
-  return finalLoc
+  return renderGrid(
+    codes.map(code => {
+      const kws = MemeIndex.infos[code]?.keywords || [code]
+      return { key: code, label: '#' + kws[0], sub: kws.slice(1).join(' / ') }
+    }),
+    {
+      title: `表情包列表 · 第 ${page}/${totalPages} 页`,
+      footer: `共 ${MemeIndex.memeCount} 个表情　·　翻页：#表情包列表 ${page < totalPages ? page + 1 : 1}`,
+      out: loc
+    }
+  )
 }
 
 export class memeList extends plugin {
@@ -72,14 +81,21 @@ export class memeList extends plugin {
 
     const pageCodes = codes.slice((page - 1) * pageSize, page * pageSize)
     try {
-      const loc = await renderPage(pageCodes, `page_${page}_${pageSize}.png`)
-      const webUrl = Config.get('enableWeb') ? `\n🔍 在线搜索预览：${Config.getWebUrl()}/memes` : ''
-      await e.reply([
+      const loc = await renderPage(pageCodes, page, totalPages, `page_${page}_${pageSize}.jpg`)
+      // 格子多了图里的名字就读不了（气泡最宽约 420px），名字另外用文字补一份
+      const nameLine = pageCodes.length > 8
+        ? pageCodes.map(code => '#' + (MemeIndex.infos[code]?.keywords?.[0] || code)).join('　')
+        : ''
+      const parts = [
         segment.image(`file://${loc}`),
         `第 ${page}/${totalPages} 页 · 共 ${MemeIndex.memeCount} 个表情\n` +
         `翻页：#表情包列表 ${page < totalPages ? page + 1 : 1}\n` +
-        `搜索：#表情包搜索 关键词${webUrl}`
-      ])
+        `搜索：#表情包搜索 关键词`
+      ]
+      if (nameLine) parts.push(nameLine)
+      const web = webLine()
+      if (web) parts.push(web)
+      await e.reply(parts)
     } catch (err) {
       logger.error(`${logPrefix} 渲染列表失败: ${err.message}`)
       await e.reply(`列表渲染失败：${err.message}`)
@@ -102,9 +118,8 @@ export class memeList extends plugin {
       let txt = `📂 表情包分类（共 ${tags.length} 个）\n\n`
       txt += tags.map(t => `${t.tag}(${t.count})`).join('  ')
       txt += '\n\n查看某个分类：#表情包分类 鸣潮'
-      if (Config.get('enableWeb')) {
-        txt += `\n在线浏览：${Config.getWebUrl()}/memes`
-      }
+      const web = webLine()
+      if (web) txt += `\n${web}`
       await e.reply(txt)
       return true
     }
@@ -122,12 +137,9 @@ export class memeList extends plugin {
 
     const limit = Config.get('searchMaxPreview') || 40
     const shown = codes.slice(0, limit)
-    // 链接不画进图里（图上的 URL 点不了），只留统计信息，链接跟图一起发文字
+    // 出图这类回复不再附链接：每条都甩一串域名太占版面，入口留在列表和帮助里
     let footer = ''
     if (codes.length > limit) footer = `共 ${codes.length} 个，图里是前 ${limit} 个`
-    const webLink = Config.get('enableWeb')
-      ? `🔍 在线浏览：${Config.getWebUrl()}/memes`
-      : ''
 
     // 同搜索：格子多了图里的名字就读不了，名字另外用文字补一份
     const nameLine = shown.length > 8
@@ -145,7 +157,6 @@ export class memeList extends plugin {
       )
       const parts = [segment.image(`file://${loc}`)]
       if (nameLine) parts.push(nameLine)
-      if (webLink) parts.push(webLink)
       await e.reply(parts)
     } catch (err) {
       logger.error(`${logPrefix} 渲染分类失败: ${err.message}`)

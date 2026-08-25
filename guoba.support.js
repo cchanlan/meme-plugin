@@ -109,7 +109,7 @@ export function supportGuoba () {
         {
           field: 'pageSize',
           label: '每页表情数',
-          bottomHelpMessage: '服务端字号固定不缩放，数量越多字越小。80 约 1007x1410（3列），是清晰度与页数的平衡点',
+          bottomHelpMessage: '列表也出带预览图的网格图。QQ 气泡最宽约 420px，24 个（6 列）每格约 70px 还能看清，调大只会更糊',
           component: 'InputNumber',
           componentProps: { min: 20, max: 300 }
         },

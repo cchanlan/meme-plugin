@@ -20,11 +20,17 @@ function esc (s) {
 
 /** 单元格实测尺寸：宽 168（含 gap）；高 = 预览区 140 + 标签区 + 边框 + gap，标签最多两行 */
 const CELL_W = 168
-const CELL_H = 210
+const CELL_H = 205
 /** body 左右 padding 之和 */
 const PAD_W = 28
-/** 标题 + 上下 padding 占的高度 */
-const PAD_H = 56
+/**
+ * 标题 + footer + 上下 padding 占的高度。
+ *
+ * CELL_H 和这个值是拿两组实测出图反解出来的（2 行 503px、4 行 913px 的 CSS 高度）。
+ * 原来写 210 / 56 时把 24 个的比例算成 1.156，实际只有 1.134 —— 估算偏乐观，
+ * 边界档位就会误判成达标。
+ */
+const PAD_H = 93
 
 /**
  * 目标宽高比。
@@ -32,9 +38,10 @@ const PAD_H = 56
  * QQ 气泡里的图受最大宽、最大高两个上限同时约束，按 contain 缩放：
  * 图比「最大宽/最大高」这个比值更高时，缩放由高度决定，宽度就顶不满气泡；
  * 更宽时才由宽度决定，显示宽度恒定 —— 这样每张搜索图都和下面那行链接齐平。
- * 实测那个比值约 1.1，取 1.15 留一点余量。
+ * 实测那个比值约 1.1，取 1.12 留一点余量（配上面修准的 CELL_H/PAD_H，
+ * 24 个仍是 6 列 4 行；再往上抬会被逼到 7 列、最后一行空 4 格反而更难看）。
  */
-const TARGET_RATIO = 1.15
+const TARGET_RATIO = 1.12
 
 /**
  * 挑列数：取「宽高比达标」的最小列数。
@@ -55,7 +62,8 @@ function bestColumns (n) {
 /**
  * 渲染表情网格图
  * @param {Array<{key:string, label:string, sub?:string}>} items
- * @param {{title?:string, footer?:string, columns?:number, thumbWidth?:number}} opts
+ * @param {{title?:string, footer?:string, columns?:number, thumbWidth?:number, out?:string}} opts
+ *        out 传了就写到指定路径（列表分页图要落盘复用），不传则用带时间戳的临时名
  * @returns {Promise<string>} 生成的图片路径
  */
 export async function renderGrid (items, opts = {}) {
@@ -63,7 +71,8 @@ export async function renderGrid (items, opts = {}) {
     title = '',
     footer = '',
     columns = bestColumns(items.length),
-    thumbWidth = 200
+    thumbWidth = 200,
+    out = ''
   } = opts
 
   // 先把缩略图都准备好，转成 data URI 直接内联，
@@ -151,6 +160,6 @@ ${footer ? `<div class="ft">${esc(footer)}</div>` : ''}
 
   const dir = path.join(dataDir, 'list_cache')
   mkdirs(dir)
-  const loc = path.join(dir, `grid_${Date.now()}_${process.pid}.jpg`)
+  const loc = out || path.join(dir, `grid_${Date.now()}_${process.pid}.jpg`)
   return shotHtml(html, loc, { width: columns * CELL_W + PAD_W })
 }

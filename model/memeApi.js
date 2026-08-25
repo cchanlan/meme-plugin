@@ -118,27 +118,6 @@ const MemeApi = {
   },
 
   /**
-   * 渲染表情列表图。
-   * 服务端字号固定不随数量缩放，所以只能靠传子集来放大字。
-   * @param {string[]} keys 要渲染的表情 key，不传则全部
-   */
-  async renderList (keys) {
-    const body = keys
-      ? JSON.stringify({ meme_list: keys.map(k => ({ meme_key: k, disabled: false, labels: [] })) })
-      : undefined
-    const r = await request('/memes/render_list', {
-      method: 'POST',
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
-      body
-    })
-    if (!r.ok) throw new Error(`渲染列表失败: HTTP ${r.status}`)
-    return {
-      buffer: Buffer.from(await r.arrayBuffer()),
-      contentType: r.headers.get('Content-Type') || 'image/png'
-    }
-  },
-
-  /**
    * 生成表情
    * @returns {Promise<{ok: boolean, buffer?: Buffer, contentType?: string, error?: string}>}
    */

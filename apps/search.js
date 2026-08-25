@@ -35,7 +35,9 @@ export class memeSearch extends plugin {
 
     // 同时匹配关键词、tag、英文 code，并按表情去重
     const hits = MemeIndex.search(query)
-    const webLink = Config.get('enableWeb') ? `\n🔍 在线搜索：${Config.getWebUrl()}/memes` : ''
+    // 命中时不附链接：出图那类回复每条都甩一串域名太占版面，
+    // 只有「没找到」和「出图失败」才给 Web 站兜底入口
+    const webLink = Config.get('enableWeb') ? `\n🔍 搜索预览：${Config.getWebUrl()}/memes` : ''
 
     if (hits.length === 0) {
       const tags = MemeIndex.getTags().filter(t => t.tag.includes(query)).slice(0, 5)
@@ -77,7 +79,6 @@ export class memeSearch extends plugin {
       )
       const parts = [segment.image(`file://${loc}`)]
       if (nameLine) parts.push(nameLine)
-      if (webLink) parts.push(webLink.replace(/^\n/, ''))
       await e.reply(parts)
     } catch (err) {
       logger.error(`${logPrefix} 搜索出图失败: ${err.message}`)
