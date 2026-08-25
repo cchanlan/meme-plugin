@@ -25,13 +25,44 @@ const MemeApi = {
     }
   },
 
-  /** 轮询等服务就绪（重启后要重新扫描 meme_dirs，需要几秒） */
-  async waitReady (maxSeconds = 30) {
+  /** 当前注册的表情数；服务没起来或响应异常返回 -1 */
+  async countKeys () {
+    try {
+      const r = await request('/memes/keys')
+      if (!r.ok) return -1
+      const list = await r.json()
+      return Array.isArray(list) ? list.length : -1
+    } catch {
+      return -1
+    }
+  },
+
+  /**
+   * 轮询等服务真正就绪。
+   *
+   * 实测（v0.1.14）meme-generator 是**扫完 meme_dirs 才开始监听**的：
+   * 重启后约 7 秒内连接直接被拒，一旦能响应就已经是完整的 944 个。
+   * 所以只等 HTTP 200 目前并不会读到残缺列表。
+   *
+   * 但这里仍然多等一拍「数量没变」才放行 —— 万一哪天它改成边扫边服务，
+   * 残缺列表会被 refreshFromApi 写盘覆盖掉好索引，用户侧表现是大量表情突然失效，
+   * 那个代价比多等一秒高得多。
+   */
+  async waitReady (maxSeconds = 60, stableSeconds = 2) {
+    let prev = -1
+    let stable = 0
     for (let i = 0; i < maxSeconds; i++) {
-      if (await this.ping()) return true
+      const n = await this.countKeys()
+      if (n > 0 && n === prev) {
+        if (++stable >= stableSeconds) return true
+      } else {
+        stable = 0
+      }
+      prev = n
       await new Promise(r => setTimeout(r, 1000))
     }
-    return false
+    // 超时但服务确实在响应：让调用方自己决定要不要继续
+    return prev > 0
   },
 
   /** 全部表情 key */

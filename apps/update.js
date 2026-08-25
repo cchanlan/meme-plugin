@@ -175,9 +175,11 @@ export class memeUpdate extends plugin {
       return true
     }
 
-    // ③ 等服务重新扫描完 meme_dirs
-    if (!await MemeApi.waitReady(30)) {
-      msgs.push('⚠️ meme 服务 30 秒内没起来，索引未刷新\n稍后手动发 #meme刷新')
+    // ③ 等服务重新扫描完 meme_dirs。
+    // 实测它是扫完才开始监听（重启后约 7 秒连接被拒），所以能响应就代表扫完了；
+    // waitReady 仍会多确认一拍数量不变，防它以后改成边扫边服务
+    if (!await MemeApi.waitReady(60)) {
+      msgs.push('⚠️ meme 服务 60 秒内没就绪，索引未刷新\n稍后手动发 #meme刷新')
       await e.reply(msgs.join('\n'))
       return true
     }

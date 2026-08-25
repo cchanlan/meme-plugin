@@ -87,9 +87,19 @@ const MemeIndex = {
    */
   async refreshFromApi () {
     const oldKeyMap = { ...keyMap }
+    const oldCount = Object.keys(infos).length
     const { keyMap: newKeyMap, infos: newInfos } = await MemeApi.fetchAll()
-    if (Object.keys(newInfos).length === 0) {
+    const newCount = Object.keys(newInfos).length
+    if (newCount === 0) {
       throw new Error('从服务端拉到 0 个表情，已保留原缓存')
+    }
+    // 数量腰斩几乎只有一种原因：服务还在扫 meme_dirs 就被抢先读了。
+    // 不阻断（万一真是删了仓库），但要留痕，方便对着日志判断
+    if (oldCount > 0 && newCount < oldCount * 0.5) {
+      logger.error(
+        `${logPrefix} 表情数从 ${oldCount} 掉到 ${newCount}，疑似服务没扫完 meme_dirs 就被读取；` +
+        '若非故意删仓库，等十几秒再发一次 #meme刷新'
+      )
     }
     keyMap = newKeyMap
     infos = newInfos
