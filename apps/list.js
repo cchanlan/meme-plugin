@@ -82,20 +82,12 @@ export class memeList extends plugin {
     const pageCodes = codes.slice((page - 1) * pageSize, page * pageSize)
     try {
       const loc = await renderPage(pageCodes, page, totalPages, `page_${page}_${pageSize}.jpg`)
-      // 格子多了图里的名字就读不了（气泡最宽约 420px），名字另外用文字补一份
-      const nameLine = pageCodes.length > 8
-        ? pageCodes.map(code => '#' + (MemeIndex.infos[code]?.keywords?.[0] || code)).join('　')
-        : ''
-      const parts = [
-        segment.image(`file://${loc}`),
-        `第 ${page}/${totalPages} 页 · 共 ${MemeIndex.memeCount} 个表情\n` +
-        `翻页：#表情包列表 ${page < totalPages ? page + 1 : 1}\n` +
-        `搜索：#表情包搜索 关键词`
-      ]
-      if (nameLine) parts.push(nameLine)
+      // 三行挤在同一个文本段里：分成多段发时 QQ 会把它们首尾粘住，看着像一行
       const web = webLine()
-      if (web) parts.push(web)
-      await e.reply(parts)
+      const tip = `第 ${page}/${totalPages} 页 · 共 ${MemeIndex.memeCount} 个表情\n` +
+        `翻页：#表情包列表 ${page < totalPages ? page + 1 : 1}` +
+        (web ? `\n${web}` : '')
+      await e.reply([segment.image(`file://${loc}`), tip])
     } catch (err) {
       logger.error(`${logPrefix} 渲染列表失败: ${err.message}`)
       await e.reply(`列表渲染失败：${err.message}`)
