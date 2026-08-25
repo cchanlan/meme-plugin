@@ -6,19 +6,13 @@ import MemeApi from '../model/memeApi.js'
 import MemeIndex from '../model/memeIndex.js'
 import { dataDir, logPrefix } from '../constants/path.js'
 import { mkdirs } from '../utils/file.js'
-import { syncMemeDirs } from '../utils/memeDirs.js'
+import { syncMemeDirs, reposRoot } from '../utils/memeDirs.js'
 
 /**
- * 表情仓库的根目录。
- * 优先用配置的 reposDir —— 机器上本来就有仓库（如 /opt/meme）时必须指过去，
- * 否则会另克隆一份，而 meme 服务读的还是旧路径，更新了也不生效。
+ * 单个仓库的路径。
+ * reposRoot 复用 utils/memeDirs.js 那份 —— 这里原本自己抄了一遍，
+ * 两处实现容易改漏（比如尾部反斜杠的处理），而且必须和写进 meme_dirs 的路径完全一致。
  */
-function reposRoot () {
-  const custom = String(Config.get('reposDir') || '').trim()
-  return custom ? custom.replace(/\/+$/, '') : path.join(dataDir, 'repos')
-}
-
-/** 单个仓库的路径 */
 function resolveRepoPath (repo) {
   return path.join(reposRoot(), repo.dir)
 }

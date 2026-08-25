@@ -236,6 +236,13 @@ export function supportGuoba () {
           bottomHelpMessage: '默认 meme-plugin，与机器上已有的 meme 进程隔离，避免冲突',
           component: 'Input',
           componentProps: { placeholder: 'meme-plugin' }
+        },
+        {
+          field: 'deployPort',
+          label: '一键部署的监听端口',
+          bottomHelpMessage: '机器上已经有 meme 服务占着 2233 时改这里，否则新装的那套一起来就撞端口被 pm2 反复重启。部署成功后服务地址会自动指向它',
+          component: 'InputNumber',
+          componentProps: { min: 1024, max: 65535 }
         }
       ],
       getConfigData () {

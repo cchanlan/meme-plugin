@@ -107,11 +107,6 @@ repos:
     url: "https://github.com/anyliew/meme_emoji"
     branch: main
     memeSubDir: emoji
-  - name: meme_emoji_nsfw
-    dir: meme_emoji_nsfw
-    url: "https://github.com/anyliew/meme_emoji_nsfw"
-    branch: main
-    memeSubDir: emoji
   - name: meme-generator-contrib
     dir: meme-generator-contrib
     url: "https://github.com/MemeCrafters/meme-generator-contrib"
@@ -143,5 +138,9 @@ deployed: false
 # 部署时 pm2 的进程名。默认与上面的 memePm2Name 不同，
 # 避免覆盖机器上已有的 meme 进程
 deployPm2Name: "meme-plugin"
+# 部署出来的服务监听哪个端口。机器上已经有一个 meme 服务占着 2233 时改这里，
+# 否则新装的那套一起来就撞端口、被 pm2 反复重启。
+# 部署成功后 memeApiUrl 会自动指向这个端口
+deployPort: 2233
 # pip 镜像源，留空用默认源
 pipIndexUrl: "https://pypi.tuna.tsinghua.edu.cn/simple"

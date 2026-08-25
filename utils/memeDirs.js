@@ -13,15 +13,35 @@ import { dataDir, logPrefix } from '../constants/path.js'
  * 只动 meme_dirs 这一行，其余配置（disabled_list、resource_urls 等）原样保留。
  */
 
-/** config.toml 的位置，与 deploy.sh 保持一致 */
+/**
+ * config.toml 的位置。
+ *
+ * meme-generator 用的是 nonebot plugin-localstore 那套目录规则（见它的 dirs.py，
+ * `user_config_dir(appname)` 默认 `roaming=True`），三个平台各不相同：
+ *   Windows → %APPDATA%\meme_generator          ← 是 Roaming 不是 Local，容易搞错
+ *   macOS   → ~/Library/Application Support/meme_generator
+ *   Linux   → $XDG_CONFIG_HOME/meme_generator，未设时才是 ~/.config/meme_generator
+ * 早先这里写死了 ~/.config，Windows 上会指向一个服务根本不读的路径，
+ * Linux 上设过 XDG_CONFIG_HOME 的机器也会找错。
+ */
 export function tomlPath () {
-  return path.join(os.homedir(), '.config', 'meme_generator', 'config.toml')
+  const app = 'meme_generator'
+  let dir
+  if (process.platform === 'win32') {
+    dir = path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), app)
+  } else if (process.platform === 'darwin') {
+    dir = path.join(os.homedir(), 'Library', 'Application Support', app)
+  } else {
+    dir = path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), app)
+  }
+  return path.join(dir, 'config.toml')
 }
 
 /** 仓库根目录：优先配置的 reposDir，否则插件数据目录 */
 export function reposRoot () {
   const custom = String(Config.get('reposDir') || '').trim()
-  return custom ? custom.replace(/\/+$/, '') : path.join(dataDir, 'repos')
+  // 尾部斜杠两种都要清 —— Windows 上用户很可能填 D:\meme\
+  return custom ? custom.replace(/[\\/]+$/, '') : path.join(dataDir, 'repos')
 }
 
 /**

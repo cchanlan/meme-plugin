@@ -6,7 +6,32 @@ import MemeApi from '../model/memeApi.js'
 import MemeIndex from '../model/memeIndex.js'
 import { dataDir, pluginResources, logPrefix } from '../constants/path.js'
 
-const DEPLOY_SH = path.join(pluginResources, 'deploy', 'deploy.sh')
+const IS_WIN = process.platform === 'win32'
+
+/**
+ * 部署脚本与解释器按平台分派。
+ * Windows 上没有 bash（除非装了 Git Bash / WSL），所以另备一份 PowerShell 脚本，
+ * 两边输出同一套 ::STEP:: / ::OK:: / ::FAIL:: 标记，解析逻辑可以共用。
+ */
+function deployCommand (args) {
+  if (IS_WIN) {
+    const ps1 = path.join(pluginResources, 'deploy', 'deploy.ps1')
+    return {
+      file: ps1,
+      cmd: 'powershell.exe',
+      argv: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps1, ...args]
+    }
+  }
+  const sh = path.join(pluginResources, 'deploy', 'deploy.sh')
+  return { file: sh, cmd: 'bash', argv: [sh, ...args] }
+}
+
+/** venv 里 meme 可执行文件的位置：Windows 放在 Scripts\ 且带 .exe */
+function venvMemePath () {
+  return IS_WIN
+    ? path.join(dataDir, 'venv', 'Scripts', 'meme.exe')
+    : path.join(dataDir, 'venv', 'bin', 'meme')
+}
 
 export class memeDeploy extends plugin {
   constructor () {
@@ -31,7 +56,7 @@ export class memeDeploy extends plugin {
   }
 
   async status (e) {
-    const venvBin = path.join(dataDir, 'venv', 'bin', 'meme')
+    const venvBin = venvMemePath()
     const customRepos = String(Config.get('reposDir') || '').trim()
     const reposDir = customRepos || path.join(dataDir, 'repos')
     const pm2Name = Config.get('deployed') ? Config.get('deployPm2Name') : Config.get('memePm2Name')
@@ -80,8 +105,17 @@ export class memeDeploy extends plugin {
   }
 
   async deploy (e) {
-    if (!fs.existsSync(DEPLOY_SH)) {
-      await e.reply(`❌ 部署脚本不存在：${DEPLOY_SH}`)
+    const pm2Name = Config.get('deployPm2Name') || 'meme-plugin'
+    const port = Number(Config.get('deployPort')) || 2233
+    const { file, cmd, argv } = deployCommand([
+      dataDir,
+      pm2Name,
+      Config.get('pipIndexUrl') || '',
+      Config.get('gitProxy') || '',
+      String(port)
+    ])
+    if (!fs.existsSync(file)) {
+      await e.reply(`❌ 部署脚本不存在：${file}`)
       return true
     }
 
@@ -104,16 +138,7 @@ export class memeDeploy extends plugin {
       '首次部署要下载 skia-python 等依赖，可能要几分钟，请耐心等~'
     )
 
-    const pm2Name = Config.get('deployPm2Name') || 'meme-plugin'
-    const args = [
-      DEPLOY_SH,
-      dataDir,
-      pm2Name,
-      Config.get('pipIndexUrl') || '',
-      Config.get('gitProxy') || ''
-    ]
-
-    const result = await this.runScript(args, e)
+    const result = await this.runScript(cmd, argv, e)
 
     if (!result.ok) {
       await e.reply(`❌ 部署失败\n${result.messages.join('\n')}`)
@@ -123,6 +148,8 @@ export class memeDeploy extends plugin {
     // 部署成功：切到自己的服务并灌索引
     Config.set('deployed', true)
     Config.set('memePm2Name', pm2Name)
+    // 新服务监听的是 deployPort，不指过去插件还在连原来那个地址
+    Config.set('memeApiUrl', `http://127.0.0.1:${port}`)
 
     const msgs = [`✅ 部署完成！\n${result.messages.join('\n')}`]
 
@@ -148,14 +175,15 @@ export class memeDeploy extends plugin {
   /**
    * 跑部署脚本，把 ::STEP::/::OK::/::FAIL:: 标记转成进度消息。
    * 用 spawn 而非 execSync：装依赖可能要几分钟，不能阻塞事件循环。
+   * 解释器和参数由 deployCommand() 按平台给出。
    */
-  runScript (args, e) {
+  runScript (cmd, argv, e) {
     return new Promise(resolve => {
       const messages = []
       let failed = null
       let lastStep = ''
 
-      const child = spawn('bash', args, {
+      const child = spawn(cmd, argv, {
         cwd: dataDir,
         env: { ...process.env },
         timeout: 900000

@@ -39,7 +39,7 @@ git clone https://github.com/cchanlan/meme-plugin.git
 
 ```
 检查环境(python3.9+/git/pm2) → 建 venv → 装 meme-generator
-→ 拉 6 个表情仓库 → 写 config.toml(原有配置会先备份) → pm2 起服务并 save
+→ 拉 5 个表情仓库 → 写 config.toml(原有配置会先备份) → pm2 起服务并 save
 ```
 
 全程幂等可重复执行。用独立的 pm2 进程名 `meme-plugin`，不影响机器上已有的 meme 进程。
@@ -54,6 +54,23 @@ pm2 start ./venv/bin/meme --name meme -- run && pm2 save
 
 再把表情仓库克隆到任意位置，写进 `~/.config/meme_generator/config.toml` 的 `meme_dirs`。
 注意 meme-generator **只在进程启动时扫描 `meme_dirs`**，改完必须重启它。
+
+## 跨平台
+
+Linux / macOS / Windows 都能跑，差异集中在路径和部署脚本上：
+
+| | Linux | macOS | Windows |
+|---|---|---|---|
+| `config.toml` | `$XDG_CONFIG_HOME/meme_generator/`，未设则 `~/.config/meme_generator/` | `~/Library/Application Support/meme_generator/` | `%APPDATA%\meme_generator\` |
+| venv 可执行文件 | `venv/bin/meme` | 同 Linux | `venv\Scripts\meme.exe` |
+| 一键部署脚本 | `deploy.sh`（bash） | 同 Linux | `deploy.ps1`（PowerShell） |
+
+`config.toml` 的位置不是插件定的，是 meme-generator 用 nonebot plugin-localstore 那套规则
+算出来的（`user_config_dir` 默认 `roaming=True`，所以 Windows 是 **Roaming** 不是 Local）。
+插件按同一套规则定位，`#meme更新` 才能把 `meme_dirs` 写进服务真正会读的那个文件。
+
+> Windows 的 `deploy.ps1` 是逐步对照 `deploy.sh` 写的、输出同一套 `::STEP::` 标记，
+> 但**没有在真机上跑过**（开发机是 Linux）。Linux 路径已完整验证过一遍。
 
 ## 指令
 
@@ -142,7 +159,7 @@ pm2 start ./venv/bin/meme --name meme -- run && pm2 save
 | `enablePreviewCache` | `true` | 预览图落盘缓存（服务端没有缓存，建议开） |
 | `memePm2Name` | `meme` | meme 服务的 pm2 **进程名** |
 | `reposDir` | 空 | 表情仓库目录，机器上已有仓库时**必须**填 |
-| `repos` | 6 项 | 订阅的表情仓库，含 `memeSubDir` |
+| `repos` | 5 项 | 订阅的表情仓库，含 `memeSubDir` |
 | `gitProxy` | 空 | GitHub 前缀代理，**建议留空直连** |
 | `deployPm2Name` | `meme-plugin` | 一键部署用的进程名 |
 | `pipIndexUrl` | 清华源 | 仅一键部署时用到 |
@@ -152,7 +169,7 @@ pm2 start ./venv/bin/meme --name meme -- run && pm2 save
 **`reposDir` 不填会白更新。** 留空时插件把仓库克隆到 `data/meme-plugin/repos/`。但如果机器上
 **本来就有**一份（比如装 meme-generator 时克隆在 `/opt/meme`），一定要填成那个路径 —— 否则
 `#meme更新` 更新的是插件自己那份副本，而服务端 `config.toml` 里 `meme_dirs` 指向的还是原来那份，
-**更新了也不生效，还白占一份磁盘**（这几个仓库合计约 1.5G）。
+**更新了也不生效，还白占一份磁盘**（这几个仓库合计约 1.8G）。
 
 **`memePm2Name` 必须填名字，不能填数字 ID。** pm2 的数字 ID 会随进程增删而错位 —— 曾经写死
 `pm2 restart 2`，结果一直在重启另一个不相干的服务，meme 服务从未重启过，新拉的表情因此永远
@@ -175,8 +192,7 @@ pm2 start ./venv/bin/meme --name meme -- run && pm2 save
 | [MeetWq/meme-generator](https://github.com/MeetWq/meme-generator) | — | 表情生成引擎本体，一切的基础 |
 | [MemeCrafters/meme-generator-contrib](https://github.com/MemeCrafters/meme-generator-contrib) | `memes` | 社区贡献的表情合集 |
 | [anyliew/meme_emoji](https://github.com/anyliew/meme_emoji) | `emoji` | 大量 emoji 风格表情 |
-| [anyliew/meme_emoji_nsfw](https://github.com/anyliew/meme_emoji_nsfw) | `emoji` | 成人向补充包，建议配合 `protectList` / `blackMemes` |
-| [anyliew/crazy_emoji](https://github.com/anyliew/crazy_emoji) | `emoji` | 同上，内容与 `meme_emoji_nsfw` 高度重合 |
+| [anyliew/crazy_emoji](https://github.com/anyliew/crazy_emoji) | `emoji` | 成人向补充包，建议配合 `protectList` / `blackMemes`。同作者的 [meme_emoji_nsfw](https://github.com/anyliew/meme_emoji_nsfw) 内容完全一致（36 个 key 一模一样），二选一即可 |
 | [jinjiao007/meme-generator-jj](https://github.com/jinjiao007/meme-generator-jj) | `memes` | 又一批社区表情 |
 | [LRZ9712/tudou-meme](https://github.com/LRZ9712/tudou-meme) | `meme` | 土豆表情包，鸣潮/米哈游系列很全 |
 
@@ -184,9 +200,9 @@ pm2 start ./venv/bin/meme --name meme -- run && pm2 save
 填错会让 `meme_dirs` 指向不存在的路径，服务扫不到表情。
 
 **加仓库前建议先量净增量。** meme-generator 按表情 key 全局去重、先加载的赢，仓库之间重复很多：
-实测 `crazy_emoji` 自带 36 个但净新增 **0**（和 `meme_emoji_nsfw` 完全重合），`tudou-meme`
-自带 111 个净新增 **107**。另外表情的 key 来自源码里 `add_meme("key", ...)` 的第一个参数，
-**不是目录名**，别拿目录名去比对。
+实测 `crazy_emoji` 和同作者的 `meme_emoji_nsfw` 那 36 个 key **一模一样**，两个都装净增 0；
+而 `tudou-meme` 自带 111 个、净新增 **107**。另外表情的 key 来自源码里 `add_meme("key", ...)`
+的第一个参数，**不是目录名**，别拿目录名去比对。
 
 ## 常见问题
 
