@@ -86,7 +86,18 @@ export function supportGuoba () {
         },
         {
           component: 'Divider',
-          label: '黑名单'
+          label: '黑名单 / 群开关'
+        },
+        {
+          field: 'disabledGroups',
+          label: '关掉表情的群',
+          bottomHelpMessage: '群管或主人在群里发 #meme关闭 会自动写进这里，#meme开启 移除，一般不用手改。存的是「关掉的群」，所以默认全开、新入的群不用先开一遍',
+          component: 'GTags',
+          componentProps: {
+            placeholder: '输入群号后回车',
+            allowAdd: true,
+            allowDel: true
+          }
         },
         {
           field: 'blackUsers',

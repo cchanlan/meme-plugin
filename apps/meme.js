@@ -5,8 +5,9 @@ import Config from '../model/config.js'
 import MemeApi from '../model/memeApi.js'
 import MemeIndex from '../model/memeIndex.js'
 import { handleArgs, detail } from '../utils/args.js'
+import { renderDetail } from '../utils/detailImage.js'
 import { uniqueName, unlinkQuietly, ensureDir, dataPath } from '../utils/file.js'
-import { isBlackUser } from '../utils/black.js'
+import { blocked } from '../utils/guard.js'
 import { logPrefix } from '../constants/path.js'
 
 async function getMasterQQ () {
@@ -60,10 +61,30 @@ export class memeMaker extends plugin {
     })
   }
 
+  /**
+   * 「xx详情」出图。
+   * 图里带真实预览和参数卡片，出图失败（缺 puppeteer / 内存不足）就退回原来的纯文字，
+   * 功能不受影响。
+   */
+  async sendDetail (e, code, info) {
+    let loc = null
+    try {
+      loc = await renderDetail(code, info)
+    } catch (err) {
+      logger.error(`${logPrefix} 详情图渲染失败 ${code}：${err.message}`)
+    }
+    if (loc) {
+      await e.reply(segment.image(`file://${loc}`), Config.get('replyWithQuote'))
+      unlinkQuietly(loc)
+      return
+    }
+    await e.reply(detail(code, info))
+  }
+
   async makeMeme (e) {
     if (MemeIndex.isEmpty) return false
-    // 拉黑的人静默放行，不回「你被拉黑了」—— 那种提示反而给了对方刷屏的抓手
-    if (isBlackUser(e.user_id)) return false
+    // 拉黑的人、关掉表情的群都静默放行，不回提示 —— 那种提示反而给了对方刷屏的抓手
+    if (blocked(e)) return false
 
     // 只去掉前导 #，不能用 replace('#','') —— 参数分隔符也是 #（如 #爬#33）
     const msg = _.trimStart(e.msg, '#')
@@ -79,7 +100,7 @@ export class memeMaker extends plugin {
 
     const text1 = _.trimStart(e.msg, '#').replace(target, '')
     if (text1.trim() === '详情' || text1.trim() === '帮助') {
-      await e.reply(detail(targetCode, info))
+      await this.sendDetail(e, targetCode, info)
       return true
     }
 

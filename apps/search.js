@@ -2,7 +2,7 @@ import Config from '../model/config.js'
 import MemeIndex from '../model/memeIndex.js'
 import { renderGrid } from '../utils/gridImage.js'
 import { unlinkQuietly } from '../utils/file.js'
-import { isBlackUser } from '../utils/black.js'
+import { blocked } from '../utils/guard.js'
 import { logPrefix } from '../constants/path.js'
 
 export class memeSearch extends plugin {
@@ -22,7 +22,7 @@ export class memeSearch extends plugin {
   }
 
   async search (e) {
-    if (isBlackUser(e.user_id)) return false
+    if (blocked(e)) return false
     const query = e.msg.replace(/^#?meme(s)?搜索/, '').trim()
     if (!query) {
       await e.reply('要搜什么呢？比如：#meme搜索 猫')

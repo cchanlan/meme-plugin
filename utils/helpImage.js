@@ -100,7 +100,7 @@ export async function renderHelp (info = {}) {
     ['#一巴掌 笨蛋', '带文字'],
     ['#高低情商 会说话/不会说话', '多段文字用 / 隔开'],
     ['#爬#33', '带参数，# 后面写参数值'],
-    ['#摸头详情', '看支持哪些参数']
+    ['#摸头详情', '出图看支持哪些参数']
   ])
 
   const find = block('🔍', '找表情', [
@@ -111,7 +111,8 @@ export async function renderHelp (info = {}) {
     ['#随机meme', '随机来一个']
   ], 'blue')
 
-  const admin = block('🔧', '管理 · 仅主人', [
+  const admin = block('🔧', '管理 · 群管/主人', [
+    ['#meme开启 / #meme关闭', '本群开关，群管可用'],
     ['#meme更新', '拉新表情并热加载'],
     ['#meme刷新', '只重建索引'],
     ['#meme部署状态', '查服务健康度'],

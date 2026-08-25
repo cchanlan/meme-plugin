@@ -2,7 +2,7 @@ import Config from '../model/config.js'
 import MemeIndex from '../model/memeIndex.js'
 import { renderHelp } from '../utils/helpImage.js'
 import { unlinkQuietly } from '../utils/file.js'
-import { isBlackUser } from '../utils/black.js'
+import { blocked } from '../utils/guard.js'
 import { logPrefix } from '../constants/path.js'
 
 export class memeHelp extends plugin {
@@ -22,7 +22,7 @@ export class memeHelp extends plugin {
   }
 
   async help (e) {
-    if (isBlackUser(e.user_id)) return false
+    if (blocked(e)) return false
 
     const web = Config.get('enableWeb') ? `${Config.getWebUrl()}/memes` : null
 
@@ -82,7 +82,10 @@ export class memeHelp extends plugin {
     lines.push('')
     lines.push(`目前共 ${MemeIndex.memeCount} 个表情 / ${MemeIndex.keywordCount} 个关键词`)
     lines.push('')
-    lines.push('【管理·仅主人】')
+    lines.push('【管理】')
+    lines.push('  #meme开启 / #meme关闭 —— 本群开关（群管或主人）')
+    lines.push('  #meme开关 —— 看本群当前状态')
+    lines.push('  以下仅主人：')
     lines.push('  #meme更新 —— 拉取新表情（会自动重启服务+刷新索引）')
     lines.push('  #meme刷新 —— 只重建索引，不动仓库')
     lines.push('  #meme部署状态 —— 查看服务健康度')
