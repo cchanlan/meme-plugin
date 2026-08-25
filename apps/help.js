@@ -44,6 +44,7 @@ export class memeHelp extends plugin {
         '#摸头 / #摸头 @某人 / 引用图片 + #摸头',
         '#一巴掌 笨蛋　多段文字用 / 隔开',
         '#meme搜索 猫　#meme列表　#meme分类',
+        '#meme排行　看谁最能整活',
         `共 ${MemeIndex.memeCount} 个表情 / ${MemeIndex.keywordCount} 个关键词`
       ]
       if (web) text.push(`在线预览：${web}`)
@@ -79,6 +80,7 @@ export class memeHelp extends plugin {
     lines.push('  #meme分类 —— 按作品/系列看，如 #meme分类 鸣潮')
     lines.push('  #表情名详情 —— 看这个表情支持什么参数')
     lines.push('  #随机meme —— 随机来一个')
+    lines.push('  #meme排行 —— 出图看谁最能整活、哪个表情最火')
     lines.push('')
     lines.push(`目前共 ${MemeIndex.memeCount} 个表情 / ${MemeIndex.keywordCount} 个关键词`)
     lines.push('')
@@ -90,6 +92,7 @@ export class memeHelp extends plugin {
     lines.push('  #meme刷新 —— 只重建索引，不动仓库')
     lines.push('  #meme部署状态 —— 查看服务健康度')
     lines.push('  #meme清缓存 —— 清空预览图/缩略图缓存')
+    lines.push('  #meme清空统计 —— 排行榜清零重来')
     lines.push('  #meme部署 —— 可选：在本机装一套 meme 服务')
     return lines.join('\n')
   }

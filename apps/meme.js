@@ -4,6 +4,7 @@ import { File, FormData } from 'node-fetch'
 import Config from '../model/config.js'
 import MemeApi from '../model/memeApi.js'
 import MemeIndex from '../model/memeIndex.js'
+import Stats from '../model/stats.js'
 import { handleArgs, detail } from '../utils/args.js'
 import { renderDetail } from '../utils/detailImage.js'
 import { uniqueName, unlinkQuietly, ensureDir, dataPath } from '../utils/file.js'
@@ -264,6 +265,13 @@ export class memeMaker extends plugin {
       fs.writeFileSync(resultLoc, res.buffer)
       await e.reply(segment.image(`file://${resultLoc}`), Config.get('replyWithQuote'))
       unlinkQuietly(resultLoc)
+      // 只在真发出去之后才记一次：失败、参数不够、被拦下的都不该进榜单
+      Stats.record({
+        code: targetCode,
+        userId: e.user_id,
+        groupId: e.group_id,
+        name: e.sender.card || e.sender.nickname
+      })
     } catch (err) {
       logger.error(`${logPrefix} 生成表情异常: ${err.message}`)
       await e.reply(`表情生成失败：${err.message}`, true)

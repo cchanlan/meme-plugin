@@ -108,7 +108,8 @@ export async function renderHelp (info = {}) {
     ['#meme列表', '分页浏览，可加页码'],
     ['#meme分类', '列出全部分类'],
     ['#meme分类 鸣潮', '出该分类的预览图'],
-    ['#随机meme', '随机来一个']
+    ['#随机meme', '随机来一个'],
+    ['#meme排行', '出图看用量榜，谁最能整活']
   ], 'blue')
 
   const admin = block('🔧', '管理 · 群管/主人', [
@@ -123,6 +124,7 @@ export async function renderHelp (info = {}) {
   const tips = tipBlock('💡', '小贴士', [
     '· 表情名认全部别名，「摸鱼」不会被「摸」抢走',
     '· 搜索超过 8 个时会另发文字版名字，方便复制',
+    '· 排行榜只记真正发出去的表情，失败的不算',
     '· 想一次看全部表情，上面的在线预览站最清楚'
   ])
 
