@@ -61,6 +61,9 @@ const MemeIndex = {
   get keywordCount () { return sortedKeys.length },
   get isEmpty () { return sortedKeys.length === 0 },
 
+  /** 该表情是否被拉黑 —— 站内生成走 code 直连，绕过了 match()，得自己查一次 */
+  isBlocked (code) { return blockedCodes().has(code) },
+
   /** 从磁盘缓存载入 */
   loadFromDisk () {
     try {
@@ -221,6 +224,9 @@ const MemeIndex = {
         minTexts: pt.min_texts,
         maxTexts: pt.max_texts,
         defaultTexts: pt.default_texts || [],
+        // 有 user_infos 的表情，名字类参数是从「@ 的那个人」来的；
+        // Web 端没有群成员，得让访客自己填个昵称
+        needsName: !!info.params_type?.args_type?.args_model?.properties?.user_infos,
         args: argSchemas(info).map(([name, schema]) => ({
           name,
           type: schema.type,

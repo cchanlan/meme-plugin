@@ -95,6 +95,12 @@ enableWeb: true
 webPort: 3132
 # 对外访问地址，群里发的链接用它。留空则用 http://localhost:webPort
 webUrl: ""
+# 站内在线生成：上传图/填文字/选参数，点一下直接出表情。
+# 注意 Web 站是公开的、不带 token，开着就意味着任何能访问该端口的人
+# 都能消耗你的 meme 服务算力，所以下面按 IP 限了频。不想开就关掉
+enableWebMake: true
+# 每个 IP 每分钟最多生成几次（同时进行的生成固定不超过 2 个）
+webMakeLimit: 10
 # 预览图落盘缓存（服务端 preview 接口没有缓存，全量约 830 张 ≈ 166MB）
 enablePreviewCache: true
 # 预览图 / 缩略图缓存各自的容量上限（MB）。

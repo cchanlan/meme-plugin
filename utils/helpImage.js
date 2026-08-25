@@ -91,7 +91,7 @@ em { font-size: 15px; font-style: normal; color: #6d5b66; }
  * @returns {Promise<string>} 图片路径
  */
 export async function renderHelp (info = {}) {
-  const { total = 0, keywords = 0, web = null } = info
+  const { total = 0, keywords = 0, web = null, canMake = false } = info
 
   const make = block('🎨', '做表情', [
     ['#摸头', '用自己头像'],
@@ -139,7 +139,7 @@ export async function renderHelp (info = {}) {
   <div>${make}${tips}</div>
   <div>${find}${admin}</div>
 </div>
-${web ? `<div class="ft">🌟 <b>在线预览</b>　${esc(web)}　—— 看图挑表情，点一下复制指令</div>` : ''}
+${web ? `<div class="ft">🌟 <b>在线预览</b>　${esc(web)}　—— 看图挑表情，点一下复制指令${canMake ? '，还能直接在线出图' : ''}</div>` : ''}
 <div class="tip">指令前缀 # 可在配置里关掉 · 表情名支持全部别名</div>
 </body></html>`
 

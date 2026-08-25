@@ -170,6 +170,19 @@ export function supportGuoba () {
           componentProps: { placeholder: '留空则用 http://localhost:端口' }
         },
         {
+          field: 'enableWebMake',
+          label: '站内在线生成',
+          bottomHelpMessage: 'Web 站详情页里直接传图/填文字/选参数出表情。注意站点是公开的、不带 token，开着就意味着任何能访问该端口的人都能消耗你的 meme 服务算力，所以按 IP 限了频',
+          component: 'Switch'
+        },
+        {
+          field: 'webMakeLimit',
+          label: '每 IP 每分钟生成次数',
+          bottomHelpMessage: '同时进行的生成固定不超过 2 个（meme 服务是单进程 Python，堆并发只会一起变慢）',
+          component: 'InputNumber',
+          componentProps: { min: 1, max: 120 }
+        },
+        {
           field: 'enablePreviewCache',
           label: '预览图落盘缓存',
           bottomHelpMessage: '服务端预览接口没有缓存，建议开启。全量约 166MB',

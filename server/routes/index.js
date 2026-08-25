@@ -1,8 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import Config from '../../model/config.js'
 import MemeIndex from '../../model/memeIndex.js'
 import Preview from '../../model/preview.js'
 import { pluginResources, logPrefix } from '../../constants/path.js'
+import { postMake } from './make.js'
 
 const WEB_DIR = path.join(pluginResources, 'web')
 
@@ -52,6 +54,9 @@ async function getData (req, res) {
   res.end(JSON.stringify({
     total: MemeIndex.memeCount,
     keywords: MemeIndex.keywordCount,
+    // 前端要据此决定显不显示「在线生成」那一块
+    canMake: !!Config.get('enableWebMake'),
+    maxFileSize: Config.get('maxFileSize') || 10,
     tags: MemeIndex.getTags(),
     memes: MemeIndex.toWebData()
   }))
@@ -118,6 +123,7 @@ const table = {
 export function getRoute (pathname, method) {
   const exact = table[`${method} ${pathname}`]
   if (exact) return exact
+  if (method === 'POST' && pathname.startsWith('/memes/make/')) return postMake
   if (method === 'GET' && pathname.startsWith('/memes/thumb/')) return getThumb
   if (method === 'GET' && pathname.startsWith('/memes/preview/')) return getPreview
   if (method === 'GET' && /^\/memes\/[\w.-]+\.(css|js)$/.test(pathname)) return getStatic

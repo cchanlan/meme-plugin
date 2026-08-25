@@ -6,6 +6,8 @@ const tplCard = $('#card-tpl')
 
 let ALL = []
 let TAGS = []
+let CAN_MAKE = false
+let MAX_MB = 10
 let curTag = ''
 let curQuery = ''
 let renderToken = 0
@@ -18,6 +20,8 @@ async function boot () {
     const data = await r.json()
     ALL = data.memes || []
     TAGS = data.tags || []
+    CAN_MAKE = !!data.canMake
+    MAX_MB = data.maxFileSize || 10
     $('#stat').textContent = `共 ${data.total} 个表情 · ${data.keywords} 个关键词`
     renderTags()
     render()
@@ -206,10 +210,215 @@ function openSheet (m) {
   if (m.args.length) row('带参用法', `${cmd}#参数`)
 
   sheet.querySelector('.sheet-copy').onclick = () => copy(cmd, null)
+  buildMake(m)
   sheet.hidden = false
+  // 上一个表情滚到一半就关了，新开的得从头看
+  sheet.querySelector('.sheet-body').scrollTop = 0
 }
 
 function closeSheet () { $('#sheet').hidden = true }
+
+// ── 在线生成 ──
+// 图走 base64 塞 JSON：后端是 Node 原生 http，没有表单解析，
+// 自己拆 multipart 边界纯属给自己找 bug
+let slots = []
+let textEls = []
+let argEls = []
+let nickEl = null
+let lastOut = ''
+
+function readAsDataURL (f) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(r.result)
+    r.onerror = () => reject(new Error('读取文件失败'))
+    r.readAsDataURL(f)
+  })
+}
+
+function field (label, ctrl) {
+  const row = document.createElement('label')
+  row.className = 'fld'
+  const t = document.createElement('span')
+  t.textContent = label
+  row.append(t, ctrl)
+  return row
+}
+
+/** 一个图片位：选文件 或 填 QQ 号取头像，二选一 */
+function slot (i, m) {
+  const wrap = document.createElement('div')
+  wrap.className = 'slot'
+  const pick = document.createElement('label')
+  pick.className = 'slot-pick'
+  const file = document.createElement('input')
+  file.type = 'file'
+  file.accept = 'image/*'
+  file.hidden = true
+  const face = document.createElement('span')
+  face.className = 'slot-face'
+  face.textContent = i < m.minImages ? `＋ 第 ${i + 1} 张` : `＋ 第 ${i + 1} 张 · 可选`
+  pick.append(file, face)
+
+  const qq = document.createElement('input')
+  qq.className = 'slot-qq'
+  qq.placeholder = '或填 QQ 号取头像'
+  qq.inputMode = 'numeric'
+
+  const st = { dataUrl: '', qq }
+  file.onchange = async () => {
+    const f = file.files[0]
+    if (!f) return
+    // 前端先拦一次：10MB 的图 base64 之后 13MB，传上去只为了被后端退回
+    if (f.size > MAX_MB * 1048576) {
+      toast(`图片超过 ${MAX_MB}MB 了`)
+      file.value = ''
+      return
+    }
+    try {
+      st.dataUrl = await readAsDataURL(f)
+    } catch (err) {
+      toast(err.message)
+      return
+    }
+    face.textContent = ''
+    const img = document.createElement('img')
+    img.src = st.dataUrl
+    face.appendChild(img)
+    qq.value = ''
+  }
+  wrap.append(pick, qq)
+  slots.push(st)
+  return wrap
+}
+
+function buildMake (m) {
+  const box = $('#sheet').querySelector('.make')
+  box.hidden = !CAN_MAKE
+  if (!CAN_MAKE) return
+
+  const slotBox = box.querySelector('.make-slots')
+  const fieldBox = box.querySelector('.make-fields')
+  const out = box.querySelector('.make-out')
+  slotBox.innerHTML = ''
+  fieldBox.innerHTML = ''
+  out.innerHTML = ''
+  slots = []
+  textEls = []
+  argEls = []
+  nickEl = null
+
+  for (let i = 0; i < m.maxImages; i++) slotBox.appendChild(slot(i, m))
+
+  for (let i = 0; i < m.maxTexts; i++) {
+    const inp = document.createElement('input')
+    inp.type = 'text'
+    inp.placeholder = i < m.minTexts ? '必填' : '可留空'
+    // 有默认文本就先填上：直接点生成也能出图，不用猜该写什么
+    if (m.defaultTexts[i]) inp.value = m.defaultTexts[i]
+    textEls.push(inp)
+    fieldBox.appendChild(field(m.maxTexts > 1 ? `文字 ${i + 1}` : '文字', inp))
+  }
+
+  for (const a of m.args) {
+    let ctrl
+    if (a.enum) {
+      ctrl = document.createElement('select')
+      for (const v of a.enum) {
+        const o = document.createElement('option')
+        o.value = v
+        o.textContent = v
+        if (v === a.default) o.selected = true
+        ctrl.appendChild(o)
+      }
+    } else if (a.type === 'boolean') {
+      ctrl = document.createElement('input')
+      ctrl.type = 'checkbox'
+      ctrl.checked = a.default === true
+    } else if (a.type === 'integer' || a.type === 'number') {
+      ctrl = document.createElement('input')
+      ctrl.type = 'number'
+      if (a.default !== undefined && a.default !== null) ctrl.value = a.default
+    } else {
+      ctrl = document.createElement('input')
+      ctrl.type = 'text'
+      if (a.default) ctrl.value = a.default
+    }
+    argEls.push({ a, ctrl })
+    fieldBox.appendChild(field(a.description || a.name, ctrl))
+  }
+
+  if (m.needsName) {
+    nickEl = document.createElement('input')
+    nickEl.type = 'text'
+    nickEl.placeholder = '部分表情会用到，可留空'
+    fieldBox.appendChild(field('昵称', nickEl))
+  }
+
+  const btn = box.querySelector('.make-go')
+  btn.disabled = false
+  btn.textContent = '生成表情'
+  btn.onclick = () => make(m, box)
+}
+
+async function make (m, box) {
+  const btn = box.querySelector('.make-go')
+  const out = box.querySelector('.make-out')
+
+  const images = slots.map(s => s.dataUrl || s.qq.value.trim()).filter(Boolean)
+  if (images.length < m.minImages) {
+    toast(`至少要 ${m.minImages} 张图，也可以填 QQ 号`)
+    return
+  }
+  const texts = textEls.map(el => el.value.trim())
+  // 只砍尾部的空框：中间留空砍掉会让后面的文字串到前一个位置上
+  while (texts.length && !texts[texts.length - 1]) texts.pop()
+  if (texts.length < m.minTexts) {
+    toast(`至少要填 ${m.minTexts} 段文字`)
+    return
+  }
+  const args = {}
+  for (const { a, ctrl } of argEls) {
+    args[a.name] = a.type === 'boolean' && !a.enum ? ctrl.checked : ctrl.value
+  }
+
+  btn.disabled = true
+  btn.textContent = '生成中…'
+  out.innerHTML = ''
+  try {
+    const r = await fetch(`/memes/make/${encodeURIComponent(m.key)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ images, texts, args, nick: nickEl ? nickEl.value.trim() : '' })
+    })
+    if (!r.ok) {
+      let msg = 'HTTP ' + r.status
+      try { msg = (await r.json()).error || msg } catch {}
+      throw new Error(msg)
+    }
+    const blob = await r.blob()
+    // 上一张的 objectURL 不撤掉，连点几次就把 blob 全留在内存里了
+    if (lastOut) URL.revokeObjectURL(lastOut)
+    lastOut = URL.createObjectURL(blob)
+    const img = document.createElement('img')
+    img.className = 'out-img'
+    img.src = lastOut
+    const save = document.createElement('a')
+    save.className = 'out-save'
+    save.href = lastOut
+    save.download = `${m.key}.${blob.type.split('/')[1] || 'gif'}`
+    save.textContent = '⬇ 保存到相册'
+    out.append(img, save)
+  } catch (err) {
+    const tip = document.createElement('div')
+    tip.className = 'out-err'
+    tip.textContent = '生成失败：' + err.message
+    out.appendChild(tip)
+  } finally {
+    btn.disabled = false
+    btn.textContent = '再生成一次'
+  }
+}
 
 // ── 事件绑定 ──
 let searchTimer

@@ -25,13 +25,16 @@ export class memeHelp extends plugin {
     if (blocked(e)) return false
 
     const web = Config.get('enableWeb') ? `${Config.getWebUrl()}/memes` : null
+    // 在线生成是 Web 站里的功能，站关了就无从提起
+    const canMake = !!(web && Config.get('enableWebMake'))
 
     let loc = null
     try {
       loc = await renderHelp({
         total: MemeIndex.memeCount,
         keywords: MemeIndex.keywordCount,
-        web
+        web,
+        canMake
       })
     } catch (err) {
       logger.error(`${logPrefix} 帮助图渲染失败：${err.message}`)
@@ -48,17 +51,18 @@ export class memeHelp extends plugin {
         `共 ${MemeIndex.memeCount} 个表情 / ${MemeIndex.keywordCount} 个关键词`
       ]
       if (web) text.push(`在线预览：${web}`)
+      if (canMake) text.push('（网页里还能直接传图在线生成）')
       await e.reply([segment.image(`file://${loc}`), text.join('\n')])
       unlinkQuietly(loc)
       return true
     }
 
     // 出图失败（缺 puppeteer / 内存不足）时退回纯文字，功能不受影响
-    await e.reply(this.textHelp(web))
+    await e.reply(this.textHelp(web, canMake))
     return true
   }
 
-  textHelp (web) {
+  textHelp (web, canMake = false) {
     const lines = [
       '🌸 表情包使用说明',
       '',
@@ -74,6 +78,7 @@ export class memeHelp extends plugin {
     if (web) {
       lines.push(`  🌟 在线预览（推荐）：${web}`)
       lines.push('     能看到每个表情长什么样，点一下就复制指令')
+      if (canMake) lines.push('     也能在网页里传图、填字，直接生成保存')
     }
     lines.push('  #meme搜索 关键词 —— 出预览图，支持按分类搜')
     lines.push('  #meme列表 —— 分页看全部（每页 24 个，带预览图）')
