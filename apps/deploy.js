@@ -36,7 +36,7 @@ function venvMemePath () {
 export class memeDeploy extends plugin {
   constructor () {
     super({
-      name: '表情包部署',
+      name: 'meme部署',
       dsc: '可选：一键部署本机 meme-generator 服务',
       event: 'message',
       priority: 4000,

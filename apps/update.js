@@ -20,7 +20,7 @@ function resolveRepoPath (repo) {
 export class memeUpdate extends plugin {
   constructor () {
     super({
-      name: '表情包更新',
+      name: 'meme更新',
       dsc: '更新表情包资源仓库并刷新索引',
       event: 'message',
       priority: 4000,

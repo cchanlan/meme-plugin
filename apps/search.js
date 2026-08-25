@@ -8,13 +8,13 @@ import { logPrefix } from '../constants/path.js'
 export class memeSearch extends plugin {
   constructor () {
     super({
-      name: '表情包搜索',
+      name: 'meme搜索',
       dsc: '搜索表情包并给出预览图',
       event: 'message',
       priority: 4000,
       rule: [
         {
-          reg: '^#?(meme(s)?|表情包)搜索\\s*(.*)$',
+          reg: '^#?meme(s)?搜索\\s*(.*)$',
           fnc: 'search'
         }
       ]
@@ -23,9 +23,9 @@ export class memeSearch extends plugin {
 
   async search (e) {
     if (isBlackUser(e.user_id)) return false
-    const query = e.msg.replace(/^#?(meme(s)?|表情包)搜索/, '').trim()
+    const query = e.msg.replace(/^#?meme(s)?搜索/, '').trim()
     if (!query) {
-      await e.reply('要搜什么呢？比如：#表情包搜索 猫')
+      await e.reply('要搜什么呢？比如：#meme搜索 猫')
       return true
     }
     if (MemeIndex.isEmpty) {
@@ -44,7 +44,7 @@ export class memeSearch extends plugin {
       await e.reply(
         `没找到「${query}」相关的表情~` +
         (tags.length ? `\n试试分类：${tags.map(t => t.tag).join('、')}` : '') +
-        `\n发 #表情包分类 看全部分类${webLink}`
+        `\n发 #meme分类 看全部分类${webLink}`
       )
       return true
     }

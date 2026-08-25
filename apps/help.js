@@ -8,13 +8,13 @@ import { logPrefix } from '../constants/path.js'
 export class memeHelp extends plugin {
   constructor () {
     super({
-      name: '表情包帮助',
+      name: 'meme帮助',
       dsc: '表情包功能说明',
       event: 'message',
       priority: 4000,
       rule: [
         {
-          reg: '^#?(meme(s)?|表情包)(帮助|help|菜单)$',
+          reg: '^#?meme(s)?(帮助|help|菜单)$',
           fnc: 'help'
         }
       ]
@@ -43,7 +43,7 @@ export class memeHelp extends plugin {
         '🌸 常用指令',
         '#摸头 / #摸头 @某人 / 引用图片 + #摸头',
         '#一巴掌 笨蛋　多段文字用 / 隔开',
-        '#表情包搜索 猫　#表情包列表　#表情包分类',
+        '#meme搜索 猫　#meme列表　#meme分类',
         `共 ${MemeIndex.memeCount} 个表情 / ${MemeIndex.keywordCount} 个关键词`
       ]
       if (web) text.push(`在线预览：${web}`)
@@ -74,11 +74,11 @@ export class memeHelp extends plugin {
       lines.push(`  🌟 在线预览（推荐）：${web}`)
       lines.push('     能看到每个表情长什么样，点一下就复制指令')
     }
-    lines.push('  #表情包搜索 关键词 —— 出预览图，支持按分类搜')
-    lines.push('  #表情包列表 —— 分页看全部（每页 80 个，字清晰）')
-    lines.push('  #表情包分类 —— 按作品/系列看，如 #表情包分类 鸣潮')
+    lines.push('  #meme搜索 关键词 —— 出预览图，支持按分类搜')
+    lines.push('  #meme列表 —— 分页看全部（每页 24 个，带预览图）')
+    lines.push('  #meme分类 —— 按作品/系列看，如 #meme分类 鸣潮')
     lines.push('  #表情名详情 —— 看这个表情支持什么参数')
-    lines.push('  #随机表情包 —— 随机来一个')
+    lines.push('  #随机meme —— 随机来一个')
     lines.push('')
     lines.push(`目前共 ${MemeIndex.memeCount} 个表情 / ${MemeIndex.keywordCount} 个关键词`)
     lines.push('')

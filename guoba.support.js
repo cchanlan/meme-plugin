@@ -9,7 +9,7 @@ export function supportGuoba () {
   return {
     pluginInfo: {
       name: pluginName,
-      title: '表情包插件',
+      title: 'meme 插件',
       author: '@cchanlan',
       link: '',
       isV3: true,

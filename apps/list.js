@@ -30,7 +30,7 @@ async function renderPage (codes, page, totalPages, cacheName) {
     }),
     {
       title: `表情包列表 · 第 ${page}/${totalPages} 页`,
-      footer: `共 ${MemeIndex.memeCount} 个表情　·　翻页：#表情包列表 ${page < totalPages ? page + 1 : 1}`,
+      footer: `共 ${MemeIndex.memeCount} 个表情　·　翻页：#meme列表 ${page < totalPages ? page + 1 : 1}`,
       out: loc
     }
   )
@@ -39,22 +39,22 @@ async function renderPage (codes, page, totalPages, cacheName) {
 export class memeList extends plugin {
   constructor () {
     super({
-      name: '表情包列表',
+      name: 'meme列表',
       dsc: '分页查看表情包列表、按分类查看',
       event: 'message',
       priority: 4000,
       rule: [
         {
-          // 放开页码：旧版 ^…列表$ 的 $ 锚点让「#表情包列表 2」匹配不上
-          reg: '^#?(meme(s)?|表情包)列表\\s*(\\d+)?$',
+          // 放开页码：旧版 ^…列表$ 的 $ 锚点让「#meme列表 2」匹配不上
+          reg: '^#?meme(s)?列表\\s*(\\d+)?$',
           fnc: 'showList'
         },
         {
-          reg: '^#?(meme(s)?|表情包)分类\\s*(.*)$',
+          reg: '^#?meme(s)?分类\\s*(.*)$',
           fnc: 'showTags'
         },
         {
-          reg: '^#?随机(meme(s)?|表情包)$',
+          reg: '^#?随机meme(s)?$',
           fnc: 'randomMeme'
         }
       ]
@@ -85,7 +85,7 @@ export class memeList extends plugin {
       // 三行挤在同一个文本段里：分成多段发时 QQ 会把它们首尾粘住，看着像一行
       const web = webLine()
       const tip = `第 ${page}/${totalPages} 页 · 共 ${MemeIndex.memeCount} 个表情\n` +
-        `翻页：#表情包列表 ${page < totalPages ? page + 1 : 1}` +
+        `翻页：#meme列表 ${page < totalPages ? page + 1 : 1}` +
         (web ? `\n${web}` : '')
       await e.reply([segment.image(`file://${loc}`), tip])
     } catch (err) {
@@ -102,14 +102,14 @@ export class memeList extends plugin {
       return true
     }
 
-    const tag = e.msg.replace(/^#?(meme(s)?|表情包)分类/, '').trim()
+    const tag = e.msg.replace(/^#?meme(s)?分类/, '').trim()
     const tags = MemeIndex.getTags()
 
     // 不带参数：列出所有分类
     if (!tag) {
       let txt = `📂 表情包分类（共 ${tags.length} 个）\n\n`
       txt += tags.map(t => `${t.tag}(${t.count})`).join('  ')
-      txt += '\n\n查看某个分类：#表情包分类 鸣潮'
+      txt += '\n\n查看某个分类：#meme分类 鸣潮'
       const web = webLine()
       if (web) txt += `\n${web}`
       await e.reply(txt)
@@ -122,7 +122,7 @@ export class memeList extends plugin {
       const similar = tags.filter(t => t.tag.includes(tag)).slice(0, 5)
       await e.reply(
         `没有「${tag}」这个分类~` +
-        (similar.length ? `\n你是想找：${similar.map(t => t.tag).join('、')}` : '\n发 #表情包分类 看全部分类')
+        (similar.length ? `\n你是想找：${similar.map(t => t.tag).join('、')}` : '\n发 #meme分类 看全部分类')
       )
       return true
     }

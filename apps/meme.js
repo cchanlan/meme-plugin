@@ -29,7 +29,7 @@ function checkFileSize (files) {
 export class memeMaker extends plugin {
   constructor () {
     super({
-      name: '表情包制作',
+      name: 'meme制作',
       dsc: '根据文字或图片制作表情包',
       event: 'message',
       // 放在最后兜底：1100+ 个关键词合并成一条 ^# 规则，

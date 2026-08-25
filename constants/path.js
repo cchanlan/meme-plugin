@@ -11,7 +11,7 @@ const pluginResources = join(pluginPath, 'resources').replace(/\\/g, '/')
 const dataDirName = 'meme-plugin'
 const dataDir = join(_path, 'data', dataDirName).replace(/\\/g, '/')
 
-const logPrefix = '[表情包]'
+const logPrefix = '[meme]'
 
 export {
   _path,
