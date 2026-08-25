@@ -6,7 +6,7 @@ import { pluginResources, logPrefix } from '../../constants/path.js'
 
 const WEB_DIR = path.join(pluginResources, 'web')
 
-const FAVICON = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>"
+const FAVICON = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌸</text></svg>"
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',

@@ -3,10 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffa8c8">
 <title>表情包大全</title>
 <link rel="stylesheet" href="/memes/index.css">
 </head>
 <body>
+<div class="site">
+  <span class="pet">🌸</span>
+  <h1>表情包大全</h1>
+</div>
+
 <header class="top">
   <div class="bar">
     <input id="q" type="text" placeholder="搜表情名 / 分类 / 英文代码…" autocomplete="off">
@@ -21,9 +27,7 @@
 <div id="empty" class="empty" hidden>
   <p>没找到相关表情</p>
   <p class="hint">试试搜「猫」「举牌」「鸣潮」这类词</p>
-</div>
-
-<div id="toast" class="toast"></div>
+</div><div id="toast" class="toast"></div>
 
 <template id="card-tpl">
   <article class="card">

@@ -1,5 +1,9 @@
 import Config from '../model/config.js'
 import MemeIndex from '../model/memeIndex.js'
+import { renderHelp } from '../utils/helpImage.js'
+import { unlinkQuietly } from '../utils/file.js'
+import { isBlackUser } from '../utils/black.js'
+import { logPrefix } from '../constants/path.js'
 
 export class memeHelp extends plugin {
   constructor () {
@@ -18,9 +22,44 @@ export class memeHelp extends plugin {
   }
 
   async help (e) {
+    if (isBlackUser(e.user_id)) return false
+
     const web = Config.get('enableWeb') ? `${Config.getWebUrl()}/memes` : null
+
+    let loc = null
+    try {
+      loc = await renderHelp({
+        total: MemeIndex.memeCount,
+        keywords: MemeIndex.keywordCount,
+        web
+      })
+    } catch (err) {
+      logger.error(`${logPrefix} 帮助图渲染失败：${err.message}`)
+    }
+
+    if (loc) {
+      // 图里字被 QQ 缩放后偏小，核心指令再补一段文字：可复制、链接可点
+      const text = [
+        '🌸 常用指令',
+        '#摸头 / #摸头 @某人 / 引用图片 + #摸头',
+        '#一巴掌 笨蛋　多段文字用 / 隔开',
+        '#表情包搜索 猫　#表情包列表　#表情包分类',
+        `共 ${MemeIndex.memeCount} 个表情 / ${MemeIndex.keywordCount} 个关键词`
+      ]
+      if (web) text.push(`在线预览：${web}`)
+      await e.reply([segment.image(`file://${loc}`), text.join('\n')])
+      unlinkQuietly(loc)
+      return true
+    }
+
+    // 出图失败（缺 puppeteer / 内存不足）时退回纯文字，功能不受影响
+    await e.reply(this.textHelp(web))
+    return true
+  }
+
+  textHelp (web) {
     const lines = [
-      '🎨 表情包使用说明',
+      '🌸 表情包使用说明',
       '',
       '【做表情】',
       '  #表情名 文字 —— 如 #摸头、#一巴掌 笨蛋',
@@ -48,8 +87,6 @@ export class memeHelp extends plugin {
     lines.push('  #meme刷新 —— 只重建索引，不动仓库')
     lines.push('  #meme部署状态 —— 查看服务健康度')
     lines.push('  #meme部署 —— 可选：在本机装一套 meme 服务')
-
-    await e.reply(lines.join('\n'))
-    return true
+    return lines.join('\n')
   }
 }

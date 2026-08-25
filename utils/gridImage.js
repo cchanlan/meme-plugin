@@ -1,44 +1,16 @@
-import fs from 'node:fs'
 import path from 'node:path'
 import Preview from '../model/preview.js'
 import { dataDir, logPrefix } from '../constants/path.js'
 import { mkdirs } from './file.js'
+import { shotHtml, THEME_CSS } from './browser.js'
 
 /**
  * 用 puppeteer 把表情渲染成带真实预览图的网格。
  *
  * 服务端的 /memes/render_list 只画关键词加占位图标，看不到表情长什么样，
  * 所以搜索/分类结果自己拼一张。中文标签交给浏览器渲染，字体不会出方框。
+ * 配色和 Web 预览站共用 THEME_CSS 那套粉白蓝主题。
  */
-
-let browserPromise = null
-
-/** 浏览器实例复用，避免每次搜索都启动一次 Chromium */
-async function getBrowser () {
-  if (browserPromise) {
-    try {
-      const b = await browserPromise
-      if (b.connected !== false) return b
-    } catch {}
-  }
-  const puppeteer = (await import('puppeteer')).default
-  browserPromise = puppeteer.launch({
-    headless: 'new',
-    args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
-  })
-  const b = await browserPromise
-  b.on('disconnected', () => { browserPromise = null })
-  return b
-}
-
-export async function closeBrowser () {
-  if (!browserPromise) return
-  try {
-    const b = await browserPromise
-    await b.close()
-  } catch {}
-  browserPromise = null
-}
 
 function esc (s) {
   return String(s).replace(/[&<>"']/g, c => (
@@ -109,42 +81,65 @@ export async function renderGrid (items, opts = {}) {
   }
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
+${THEME_CSS}
 body {
+  position: relative;
   width: ${columns * 168 + 28}px;
   padding: 14px;
-  background: #f7f8fa;
-  font-family: "Noto Sans CJK SC", "Noto Sans CJK", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
-.title { padding: 2px 4px 12px; font-size: 19px; font-weight: 700; color: #1f2328; }
-.grid { display: grid; grid-template-columns: repeat(${columns}, 1fr); gap: 10px; }
+.title {
+  position: relative;
+  padding: 2px 4px 12px;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: .3px;
+}
+.grid { position: relative; display: grid; grid-template-columns: repeat(${columns}, 1fr); gap: 10px; }
 .cell {
+  position: relative;
   overflow: hidden;
-  background: #fff;
-  border: 1px solid #e4e7eb;
-  border-radius: 12px;
+  background: #fffdfe;
+  border: 1px solid #ffd9e8;
+  border-radius: 14px;
+  box-shadow: 0 1px 4px rgba(214, 158, 186, .09), 0 5px 14px rgba(160, 180, 225, .09);
+}
+/* 顶部渐变封口条走 absolute，不能占高度 —— 一占 CELL_H 的估算就偏，列数会挑错 */
+.cell::before {
+  content: "";
+  position: absolute; top: 0; right: 0; left: 0; height: 3px; z-index: 2;
+  background: linear-gradient(112deg, #f79ac0 0%, #d3b0f2 34%, #b6c8f5 66%, #96c5fa 100%);
+  opacity: .8;
 }
 .pic {
   display: flex; align-items: center; justify-content: center;
   height: 140px; padding: 6px;
-  background: repeating-conic-gradient(#0000 0 25%, #8881 0 50%) 0 0/14px 14px;
+  /* 透明格用粉蓝双色棋盘，压得很淡：透明背景的表情占多数，格子一浓就盖过表情本身 */
+  background:
+    linear-gradient(45deg, rgba(255,168,200,.07) 25%, transparent 25% 75%, rgba(255,168,200,.07) 75%) 0 0/14px 14px,
+    linear-gradient(45deg, rgba(150,197,250,.06) 25%, transparent 25% 75%, rgba(150,197,250,.06) 75%) 7px 7px/14px 14px;
 }
-.pic img { max-width: 100%; max-height: 100%; object-fit: contain; }
-.pic.none { color: #b8bec7; font-size: 12px; background: #f2f3f5; }
+.pic img {
+  max-width: 100%; max-height: 100%; object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(150, 130, 148, .14));
+}
+.pic.none { color: #cfa7bb; font-size: 12px; background: #fff6fa; }
 .lb { padding: 7px 9px 9px; }
 /* 标签压到最多两行：行高不定的话上面 CELL_H 的估算就不准，
    列数会挑错，出图宽高比跟着飘 */
 .lb b {
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
-  font-size: 14px; font-weight: 600; color: #1f2328; word-break: break-all; line-height: 1.35;
+  font-size: 14px; font-weight: 700; color: #55424d; word-break: break-all; line-height: 1.35;
 }
 .lb i {
-  display: block; margin-top: 2px; font-size: 11px; font-style: normal; color: #7b828c;
+  display: block; margin-top: 2px; font-size: 11px; font-style: normal; color: #ab99a5;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.ft { padding: 12px 4px 2px; font-size: 12.5px; color: #656d76; line-height: 1.6; }
+.ft {
+  position: relative;
+  padding: 12px 4px 2px; font-size: 12.5px; color: #93818d; line-height: 1.6;
+}
 </style></head><body>
-${title ? `<div class="title">${esc(title)}</div>` : ''}
+${title ? `<div class="title"><span class="grad-text">🌸 ${esc(title)}</span></div>` : ''}
 <div class="grid">
 ${cells.map(c => `<div class="cell">
 <div class="pic${c.dataUri ? '' : ' none'}">${c.dataUri ? `<img src="${c.dataUri}">` : '暂无预览'}</div>
@@ -154,21 +149,8 @@ ${cells.map(c => `<div class="cell">
 ${footer ? `<div class="ft">${esc(footer)}</div>` : ''}
 </body></html>`
 
-  const browser = await getBrowser()
-  const page = await browser.newPage()
-  try {
-    await page.setViewport({ width: columns * CELL_W + PAD_W, height: 200, deviceScaleFactor: 1.5 })
-    await page.setContent(html, { waitUntil: 'load', timeout: 60000 })
-    const dir = path.join(dataDir, 'list_cache')
-    mkdirs(dir)
-    const loc = path.join(dir, `grid_${Date.now()}_${process.pid}.jpg`)
-    // 截 body 而不是 fullPage：内容撑不满 viewport 时 fullPage 会在底下补一片空白
-    // ——5 个表情那种小结果图会多出一大截白边，还把宽高比算歪、宽度顶不满气泡。
-    // jpeg 体积约为 png 的 1/5，表情网格用它足够
-    const body = await page.$('body')
-    await body.screenshot({ path: loc, type: 'jpeg', quality: 88 })
-    return loc
-  } finally {
-    await page.close().catch(() => {})
-  }
+  const dir = path.join(dataDir, 'list_cache')
+  mkdirs(dir)
+  const loc = path.join(dir, `grid_${Date.now()}_${process.pid}.jpg`)
+  return shotHtml(html, loc, { width: columns * CELL_W + PAD_W })
 }
