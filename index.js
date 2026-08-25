@@ -6,7 +6,8 @@ import MemeIndex from './model/memeIndex.js'
 import MemeApi from './model/memeApi.js'
 import { startWebServer } from './server/index.js'
 import { logPrefix, dataDir } from './constants/path.js'
-import { cleanupStale, mkdirs } from './utils/file.js'
+import { mkdirs } from './utils/file.js'
+import { runCleanup, startCleanupTimer } from './utils/cleanup.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -34,12 +35,16 @@ if (count > 0) {
   })
 }
 
-// 清掉上次运行残留的临时文件
-const staleImgs = cleanupStale(path.join(dataDir, 'original'))
-const staleResults = cleanupStale(path.join(dataDir, 'result'))
-if (staleImgs + staleResults > 0) {
-  logger.mark(`${logPrefix} 清理了 ${staleImgs + staleResults} 个遗留临时文件`)
+// 清掉上次运行残留的临时文件，并挂上定时维护
+// （preview_cache / thumb_cache 原来只在 #meme更新 时才清，平时只增不减）
+const cleaned = runCleanup()
+if (cleaned.stale + cleaned.deleted > 0) {
+  logger.mark(
+    `${logPrefix} 清理了 ${cleaned.stale} 个遗留临时文件` +
+    (cleaned.deleted ? `，淘汰 ${cleaned.deleted} 张超额预览图（${(cleaned.freed / 1048576).toFixed(1)}MB）` : '')
+  )
 }
+startCleanupTimer(6)
 
 // ── 加载 apps ──
 const appsDir = path.join(__dirname, 'apps')

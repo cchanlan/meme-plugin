@@ -115,6 +115,7 @@ export async function renderHelp (info = {}) {
     ['#meme更新', '拉新表情并热加载'],
     ['#meme刷新', '只重建索引'],
     ['#meme部署状态', '查服务健康度'],
+    ['#meme清缓存', '清空预览图缓存'],
     ['#meme部署', '本机装一套 meme 服务']
   ], 'lilac')
 

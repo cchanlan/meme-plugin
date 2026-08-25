@@ -3,7 +3,7 @@ import _ from 'lodash'
 import Config from '../model/config.js'
 import MemeIndex from '../model/memeIndex.js'
 import { renderGrid } from '../utils/gridImage.js'
-import { dataPath, ensureDir, cleanupStale, unlinkQuietly } from '../utils/file.js'
+import { dataPath, ensureDir, unlinkQuietly } from '../utils/file.js'
 import { isBlackUser } from '../utils/black.js'
 import { logPrefix } from '../constants/path.js'
 
@@ -175,10 +175,5 @@ export class memeList extends plugin {
     maker.e = e
     e.msg = `#${keyword}`
     return await maker.makeMeme(e)
-  }
-
-  /** 清理过期的列表缓存 */
-  static cleanCache () {
-    return cleanupStale(dataPath('list_cache'), 24 * 3600 * 1000)
   }
 }

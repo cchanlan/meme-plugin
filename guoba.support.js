@@ -56,8 +56,16 @@ export function supportGuoba () {
         {
           field: 'maxFileSize',
           label: '图片大小上限(MB)',
+          bottomHelpMessage: '超过这个大小的图直接拒收，不会下载下来再判',
           component: 'InputNumber',
           componentProps: { min: 1, max: 50 }
+        },
+        {
+          field: 'imageTimeout',
+          label: '图片下载超时(毫秒)',
+          bottomHelpMessage: 'QQ 图床偶发不返回时的兜底，别设太长，整条消息会一直挂着',
+          component: 'InputNumber',
+          componentProps: { min: 3000, max: 120000, step: 1000 }
         },
         {
           field: 'masterProtect',
@@ -155,6 +163,13 @@ export function supportGuoba () {
           label: '预览图落盘缓存',
           bottomHelpMessage: '服务端预览接口没有缓存，建议开启。全量约 166MB',
           component: 'Switch'
+        },
+        {
+          field: 'maxCacheMB',
+          label: '缓存容量上限(MB)',
+          bottomHelpMessage: '预览图和缩略图各自的上限，超了淘汰最久没读到的。每 6 小时自动维护一次，也可以发 #meme清缓存 立刻清空。0 为不限',
+          component: 'InputNumber',
+          componentProps: { min: 0, max: 5000, step: 50 }
         },
         {
           component: 'Divider',

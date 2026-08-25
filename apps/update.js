@@ -4,6 +4,7 @@ import { execSync } from 'node:child_process'
 import Config from '../model/config.js'
 import MemeApi from '../model/memeApi.js'
 import MemeIndex from '../model/memeIndex.js'
+import Preview from '../model/preview.js'
 import { dataDir, logPrefix } from '../constants/path.js'
 import { mkdirs } from '../utils/file.js'
 import { syncMemeDirs, reposRoot } from '../utils/memeDirs.js'
@@ -34,9 +35,27 @@ export class memeUpdate extends plugin {
           reg: '^#?meme(重载|刷新)$',
           fnc: 'reloadOnly',
           permission: 'master'
+        },
+        {
+          reg: '^#?meme清缓存$',
+          fnc: 'clearCache',
+          permission: 'master'
         }
       ]
     })
+  }
+
+  /** 手动清缓存。平时有定时维护，这里给「就是现在想腾空间」用 */
+  async clearCache (e) {
+    const before = Preview.stats()
+    clearImageCaches()
+    const mb = n => (n / 1048576).toFixed(1)
+    await e.reply(
+      '🧹 出图缓存已清空\n' +
+      `预览图 ${before.full} 张（${mb(before.fullSize)}MB）· 缩略图 ${before.thumb} 张（${mb(before.thumbSize)}MB）\n` +
+      '下次访问会重新回源，Web 站首屏会慢一点'
+    )
+    return true
   }
 
   /** 只刷新索引，不动仓库（服务端已经是新的时候用这个更快） */

@@ -86,6 +86,7 @@ export class memeHelp extends plugin {
     lines.push('  #meme更新 —— 拉取新表情（会自动重启服务+刷新索引）')
     lines.push('  #meme刷新 —— 只重建索引，不动仓库')
     lines.push('  #meme部署状态 —— 查看服务健康度')
+    lines.push('  #meme清缓存 —— 清空预览图/缩略图缓存')
     lines.push('  #meme部署 —— 可选：在本机装一套 meme 服务')
     return lines.join('\n')
   }

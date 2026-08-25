@@ -11,6 +11,9 @@ forceSharp: true
 replyWithQuote: false
 # 用户输入图片的最大文件大小（MB）
 maxFileSize: 10
+# 单张图片的下载超时（毫秒）。
+# 裸 fetch 不设超时的话，QQ 图床偶发不返回会把整条消息一直挂着
+imageTimeout: 15000
 
 # ===== 主人保护 =====
 # 开启后，撅主人的表情会被反撅（目前只支持 QQ）
@@ -90,6 +93,10 @@ webPort: 3132
 webUrl: ""
 # 预览图落盘缓存（服务端 preview 接口没有缓存，全量约 830 张 ≈ 166MB）
 enablePreviewCache: true
+# 预览图 / 缩略图缓存各自的容量上限（MB）。
+# 超了就淘汰最久没被读到的，删到上限的 80%。
+# 全量预览图约 166MB、缩略图再加一份，留 0 表示不限
+maxCacheMB: 300
 
 # ===== 更新 =====
 # meme 服务在 pm2 里的进程名。

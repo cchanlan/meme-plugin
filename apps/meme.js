@@ -18,12 +18,28 @@ async function getAvatar (e, userId = e.sender.user_id) {
   return `https://q1.qlogo.cn/g?b=qq&s=0&nk=${userId}`
 }
 
-/** 有任意文件超过限制就返回 true */
-function checkFileSize (files) {
-  const max = (Config.get('maxFileSize') || 10) * 1024 * 1024
-  let list = Array.isArray(files) ? files : [files]
-  list = list.filter(f => !!(f?.size))
-  return list.some(f => f.size >= max)
+/**
+ * 下一张用户图。两处都是踩过的：
+ * - 必须带超时：裸 fetch 遇上 QQ 图床偶发不返回时，会把整条消息一直挂在那儿，
+ *   等 Yunzai 自己超时，期间这个人再发指令还会叠一份
+ * - 大小要先看 content-length：原来只在下载完之后用 checkFileSize 拦，
+ *   流量已经吃进来了，maxFileSize 只挡住了生成、没挡住下载
+ */
+async function fetchImage (url, maxBytes, timeoutMs) {
+  const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const tooBig = n => {
+    const err = new Error(`图片 ${(n / 1048576).toFixed(1)}MB，超过 ${(maxBytes / 1048576).toFixed(0)}MB 限制`)
+    err.oversize = true
+    return err
+  }
+  const len = Number(res.headers.get('content-length'))
+  if (len && len >= maxBytes) throw tooBig(len)
+  const buffer = Buffer.from(await res.arrayBuffer())
+  // 分块传输不给 content-length，这种只能下完再判
+  if (buffer.length >= maxBytes) throw tooBig(buffer.length)
+  const type = (res.headers.get('Content-Type') || 'image/jpeg').split(';')[0]
+  return { buffer, ext: type.split('/')[1] || 'jpeg' }
 }
 
 export class memeMaker extends plugin {
@@ -126,18 +142,36 @@ export class memeMaker extends plugin {
 
       imgUrls = imgUrls.slice(0, Math.min(info.params_type.max_images, imgUrls.length))
       ensureDir('original')
-      for (let i = 0; i < imgUrls.length; i++) {
+      const maxBytes = (Config.get('maxFileSize') || 10) * 1024 * 1024
+      const timeoutMs = Config.get('imageTimeout') || 15000
+      // 并行下：原来是 for + await 串行，多图表情要白等好几个来回
+      const downloaded = await Promise.all(imgUrls.map(async url => {
         try {
-          const res = await fetch(imgUrls[i])
-          const fileType = (res.headers.get('Content-Type') || 'image/jpeg').split('/')[1]
-          const buffer = Buffer.from(await res.arrayBuffer())
-          const loc = dataPath('original', uniqueName(fileType))
-          fs.writeFileSync(loc, buffer)
-          fileLocs.push(loc)
-          formData.append('images', new File([buffer], `avatar_${i}.jpg`, { type: 'image/jpeg' }))
+          return await fetchImage(url, maxBytes, timeoutMs)
         } catch (err) {
-          logger.error(`${logPrefix} 下载图片失败: ${err.message}`)
+          logger.error(`${logPrefix} 下载图片失败 ${url}: ${err.message}`)
+          return { error: err }
         }
+      }))
+
+      const oversize = downloaded.find(d => d?.error?.oversize)
+      if (oversize) {
+        await e.reply(oversize.error.message, true)
+        return true
+      }
+      // 顺序敏感：images 的先后决定表情里谁在左谁在右，所以按原下标回填
+      for (let i = 0; i < downloaded.length; i++) {
+        const d = downloaded[i]
+        if (!d || d.error) continue
+        const loc = dataPath('original', uniqueName(d.ext))
+        fs.writeFileSync(loc, d.buffer)
+        fileLocs.push(loc)
+        formData.append('images', new File([d.buffer], `avatar_${i}.jpg`, { type: 'image/jpeg' }))
+      }
+      if (formData.getAll('images').length < info.params_type.min_images) {
+        for (const loc of fileLocs) unlinkQuietly(loc)
+        await e.reply('图片下载失败了，稍后再试试~', true)
+        return true
       }
     }
 
@@ -195,11 +229,6 @@ export class memeMaker extends plugin {
 
     const argsStr = handleArgs(targetCode, info, args, userInfos)
     if (argsStr) formData.set('args', argsStr)
-
-    if (checkFileSize(formData.getAll('images'))) {
-      for (const loc of fileLocs) unlinkQuietly(loc)
-      return e.reply(`文件大小超出限制，最多支持${Config.get('maxFileSize')}MB`)
-    }
 
     try {
       const res = await MemeApi.generate(targetCode, formData)

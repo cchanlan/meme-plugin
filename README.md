@@ -107,6 +107,7 @@ Linux / macOS / Windows 都能跑，差异集中在路径和部署脚本上：
 | `#meme更新` | 拉取新表情：git pull → 登记 `meme_dirs` → 重启 meme 服务 → 热加载索引 |
 | `#meme刷新` / `#meme重载` | 只重建索引、清出图缓存，不动仓库（服务端已经是新的时用这个更快） |
 | `#meme部署状态` | 查看服务连通性、索引规模、venv/仓库/pm2 健康度 |
+| `#meme清缓存` | 清空预览图/缩略图缓存（平时每 6 小时按 `maxCacheMB` 自动淘汰一次，这个是手动立刻清） |
 | `#meme部署` | 可选：在本机部署一套 meme 服务 |
 
 ## Web 预览站
@@ -145,7 +146,8 @@ Linux / macOS / Windows 都能跑，差异集中在路径和部署脚本上：
 | `apiTimeout` | `30000` | 单次请求超时（毫秒） |
 | `forceSharp` | `true` | 是否必须带 `#` 前缀 |
 | `replyWithQuote` | `false` | 发表情时是否引用回复 |
-| `maxFileSize` | `10` | 输入图片大小上限（MB） |
+| `maxFileSize` | `10` | 输入图片大小上限（MB），超了直接拒收不下载 |
+| `imageTimeout` | `15000` | 单张图片下载超时（毫秒） |
 | `masterProtect` | `true` | 撅主人会被反撅 |
 | `protectList` | 41 项 | 参与上面这条保护的表情 key |
 | `blackUsers` | `[]` | 拉黑的 QQ 号 |
@@ -157,6 +159,7 @@ Linux / macOS / Windows 都能跑，差异集中在路径和部署脚本上：
 | `webPort` | `3132` | Web 端口 |
 | `webUrl` | 空 | 对外地址，群里发的链接用它 |
 | `enablePreviewCache` | `true` | 预览图落盘缓存（服务端没有缓存，建议开） |
+| `maxCacheMB` | `300` | 预览图/缩略图缓存各自的容量上限，超了淘汰最久没读到的，`0` 不限 |
 | `memePm2Name` | `meme` | meme 服务的 pm2 **进程名** |
 | `reposDir` | 空 | 表情仓库目录，机器上已有仓库时**必须**填 |
 | `repos` | 5 项 | 订阅的表情仓库，含 `memeSubDir` |
