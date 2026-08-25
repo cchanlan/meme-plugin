@@ -1,0 +1,147 @@
+# ===== meme 服务 =====
+# meme-generator 服务地址。用远程/公共服务改这里即可，不必本机部署。
+memeApiUrl: "http://127.0.0.1:2233"
+# 单次请求超时（毫秒）
+apiTimeout: 30000
+
+# ===== 触发方式 =====
+# 是否强制要求 # 前缀。false 则「摸头」也能触发，容易误触发，建议保持 true
+forceSharp: true
+# 机器人发表情时是否引用回复用户
+replyWithQuote: false
+# 用户输入图片的最大文件大小（MB）
+maxFileSize: 10
+
+# ===== 主人保护 =====
+# 开启后，撅主人的表情会被反撅（目前只支持 QQ）
+masterProtect: true
+# 参与保护的表情 key
+protectList:
+  - lash
+  - do
+  - beat_up
+  - little_do
+  - shoot
+  - behind_do
+  - fleshlight_air_play
+  - fleshlight_angel
+  - fleshlight_cleaning_liquid
+  - fleshlight_commemorative_edition_saint_sister
+  - fleshlight_hoshino_alice
+  - fleshlight_idol_heartbeat
+  - fleshlight_jissbon
+  - fleshlight_kuileishushi
+  - fleshlight_limited_edition_saint_sister
+  - fleshlight_liuli_zi
+  - fleshlight_machinery
+  - fleshlight_mengxin_packs
+  - fleshlight_miyuko_kamimiya
+  - fleshlight_mizuki_shiranui
+  - fleshlight_nrn
+  - fleshlight_pure_buttocks
+  - fleshlight_purple_spirit
+  - fleshlight_qiaobenyouxi
+  - fleshlight_random
+  - fleshlight_saint_sister
+  - fleshlight_saki_haruna
+  - fleshlight_selena
+  - fleshlight_starter_pack
+  - fleshlight_summer_liuli_zi
+  - fleshlight_taimanin_asgi
+  - fleshlight_xingnai
+  - huochailu
+  - laydown_do
+  - masturbate
+  - mihoyo_elysia_come
+  - moistening_water
+  - nailoong_do
+  - oral_sex
+  - sitdown_do
+  - spraypee
+
+# ===== 黑名单 =====
+# 拉黑的 QQ 号。这些人发表情相关指令一律不响应，
+# 且是静默放行不回提示 —— 回「你被拉黑了」反而给了对方刷屏的抓手
+blackUsers: []
+# 拉黑的表情。填英文 key（如 petpet）或中文关键词（如 摸头）都行；
+# 按关键词拉黑会连带屏蔽该表情的全部别名，不会从另一个名字绕进来。
+# 过滤做在索引层，所以生成、搜索、分类、列表、随机、Web 预览站全都查不到
+blackMemes: []
+
+# ===== 列表 / 搜索 =====
+# 列表每页表情数。列表走服务端出图（只有关键词没有预览图，但字大清晰），
+# 字号固定不随数量缩放，80 约 1007x1410（3 列）
+pageSize: 80
+# 搜索/分类最多出几个表情的预览图。
+# 这两个走自己拼的网格图（每个表情都有真实预览图）。
+# 别调太大：QQ 气泡里图片最多只显示约 420px 宽，格子一多每格就只剩几个像素，
+# 表情名彻底读不了 —— 24 个约每格 105px，80 个（12 列）只剩 35px、字 2.9px。
+# 想一次看全去 Web 预览站，调大这个数只会更糊
+searchMaxPreview: 24
+# 分类列表里，只显示表情数 >= 该值的 tag（tag 很碎，1 个的没必要列）
+tagMinCount: 2
+
+# ===== Web 预览站 =====
+enableWeb: true
+webPort: 3132
+# 对外访问地址，群里发的链接用它。留空则用 http://localhost:webPort
+webUrl: ""
+# 预览图落盘缓存（服务端 preview 接口没有缓存，全量约 830 张 ≈ 166MB）
+enablePreviewCache: true
+
+# ===== 更新 =====
+# meme 服务在 pm2 里的进程名。
+# 注意：必须用【名字】不能用数字 ID —— pm2 的数字 ID 会随进程增删而错位
+memePm2Name: "meme"
+# 表情仓库的存放目录。
+# 留空则用 data/meme-plugin/repos/（一键部署时会用这个）。
+# 如果机器上已经有仓库了（比如 /opt/meme），务必填成那个路径 ——
+# 否则插件会另克隆一份，而 meme 服务读的还是旧路径，更新了也不生效。
+# 填了以后要和 ~/.config/meme_generator/config.toml 的 meme_dirs 保持一致。
+reposDir: ""
+# 订阅的表情仓库。dir 是仓库目录名，
+# memeSubDir 是该仓库里存放表情的子目录（各仓库结构不同）
+repos:
+  - name: meme_emoji
+    dir: meme_emoji
+    url: "https://github.com/anyliew/meme_emoji"
+    branch: main
+    memeSubDir: emoji
+  - name: meme_emoji_nsfw
+    dir: meme_emoji_nsfw
+    url: "https://github.com/anyliew/meme_emoji_nsfw"
+    branch: main
+    memeSubDir: emoji
+  - name: meme-generator-contrib
+    dir: meme-generator-contrib
+    url: "https://github.com/MemeCrafters/meme-generator-contrib"
+    branch: main
+    memeSubDir: memes
+  - name: meme-generator-jj
+    dir: meme-generator-jj
+    url: "https://github.com/jinjiao007/meme-generator-jj"
+    branch: master
+    memeSubDir: memes
+  # crazy_emoji 内容偏成人向，装上后建议把相关关键词加进 protectList
+  - name: crazy_emoji
+    dir: crazy_emoji
+    url: "https://github.com/anyliew/crazy_emoji"
+    branch: main
+    memeSubDir: emoji
+  - name: tudou-meme
+    dir: tudou-meme
+    url: "https://github.com/LRZ9712/tudou-meme"
+    branch: main
+    memeSubDir: meme
+# GitHub 代理前缀，留空为直连（推荐，本机通常已配 git 代理）。
+# 公共前缀镜像经常失效，git 报 403/522 就是它挂了，清空改直连即可
+gitProxy: ""
+
+# ===== 可选部署 =====
+# 是否已经用 #meme部署 部署过本机服务。脚本执行成功后自动置 true
+deployed: false
+# 部署时 pm2 的进程名。默认与上面的 memePm2Name 不同，
+# 避免覆盖机器上已有的 meme 进程
+deployPm2Name: "meme-plugin"
+# pip 镜像源，留空用默认源
+pipIndexUrl: "https://pypi.tuna.tsinghua.edu.cn/simple"

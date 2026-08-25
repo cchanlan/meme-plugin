@@ -1,0 +1,8 @@
+{
+  "name": "meme-plugin",
+  "version": "1.0.0",
+  "description": "基于 Yunzai 的表情包插件，接 meme-generator，带 Web 预览站与可选一键部署",
+  "main": "index.js",
+  "type": "module",
+  "dependencies": {}
+}

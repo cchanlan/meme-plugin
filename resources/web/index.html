@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>表情包大全</title>
+<link rel="stylesheet" href="/memes/index.css">
+</head>
+<body>
+<header class="top">
+  <div class="bar">
+    <input id="q" type="text" placeholder="搜表情名 / 分类 / 英文代码…" autocomplete="off">
+    <button id="clear" title="清空">✕</button>
+  </div>
+  <div id="tags" class="tags"></div>
+  <div class="stat"><span id="stat">加载中…</span></div>
+</header>
+
+<main id="grid" class="grid"></main>
+
+<div id="empty" class="empty" hidden>
+  <p>没找到相关表情</p>
+  <p class="hint">试试搜「猫」「举牌」「鸣潮」这类词</p>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<template id="card-tpl">
+  <article class="card">
+    <div class="thumb"><img loading="lazy" alt=""></div>
+    <div class="meta">
+      <div class="cmd"></div>
+      <div class="alias"></div>
+      <div class="need"></div>
+    </div>
+  </article>
+</template>
+
+<div id="sheet" class="sheet" hidden>
+  <div class="sheet-bg"></div>
+  <div class="sheet-body">
+    <button class="sheet-close">✕</button>
+    <img class="sheet-img" alt="">
+    <h2 class="sheet-title"></h2>
+    <div class="sheet-cmd"></div>
+    <dl class="sheet-info"></dl>
+    <button class="sheet-copy">复制指令</button>
+  </div>
+</div>
+
+<script src="/memes/index.js"></script>
+</body>
+</html>
