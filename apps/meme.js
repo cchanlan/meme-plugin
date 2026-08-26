@@ -9,15 +9,11 @@ import { handleArgs, detail } from '../utils/args.js'
 import { renderDetail } from '../utils/detailImage.js'
 import { uniqueName, unlinkQuietly, ensureDir, dataPath } from '../utils/file.js'
 import { blocked } from '../utils/guard.js'
+import { getAvatarUrl, getSelfAvatarUrl, getMemberInfo } from '../utils/user.js'
 import { logPrefix } from '../constants/path.js'
 
 async function getMasterQQ () {
   return (await import('../../../lib/config/config.js')).default.masterQQ
-}
-
-async function getAvatar (e, userId = e.sender.user_id) {
-  if (typeof e.getAvatarUrl === 'function') return await e.getAvatarUrl(0)
-  return `https://q1.qlogo.cn/g?b=qq&s=0&nk=${userId}`
 }
 
 /**
@@ -112,7 +108,10 @@ export class memeMaker extends plugin {
     let userInfos
 
     if (info.params_type.max_images > 0) {
-      let imgUrls = []
+      // 每张图都记着「这是谁的头像」（uid，非头像来源为 null）。
+      // 主人保护原来是拿 URL 去 split('=') 抠 QQ 号，只对写死的 qlogo 地址成立 ——
+      // 一旦头像地址改成问适配器要（微信、官方 bot 的地址长得完全不一样），那段判断就静默失效了
+      let imgs = []
       if (e.source || e.reply_id) {
         // 优先从回复里找图
         let reply
@@ -127,47 +126,46 @@ export class memeMaker extends plugin {
         }
         if (reply?.message) {
           for (const val of reply.message) {
-            if (val.type === 'image') imgUrls.push(val.url)
+            if (val.type === 'image') imgs.push({ uid: null, url: val.url })
           }
         }
       } else if (e.img) {
-        imgUrls.push(...e.img)
+        imgs.push(...e.img.map(url => ({ uid: null, url })))
       } else if (e.message.filter(m => m.type === 'at').length > 0) {
-        imgUrls = e.message
-          .filter(m => m.type === 'at')
-          .map(at => at.qq)
-          .map(qq => `https://q1.qlogo.cn/g?b=qq&s=160&nk=${qq}`)
+        imgs = await Promise.all(
+          e.message
+            .filter(m => m.type === 'at')
+            .map(async at => ({ uid: at.qq, url: await getAvatarUrl(e, at.qq) }))
+        )
+        imgs = imgs.filter(i => i.url)
       }
 
-      const myAvatar = await getAvatar(e)
-      if (!imgUrls || imgUrls.length === 0) {
-        imgUrls = [myAvatar]
-      }
-      if (imgUrls.length < info.params_type.min_images && imgUrls.indexOf(myAvatar) === -1) {
-        imgUrls = [myAvatar].concat(imgUrls)
+      const me = { uid: e.sender.user_id, url: await getSelfAvatarUrl(e) }
+      const sameAsMe = i => String(i.uid) === String(me.uid)
+      if (!imgs.length) imgs = [me]
+      if (imgs.length < info.params_type.min_images && !imgs.some(sameAsMe)) {
+        imgs = [me, ...imgs]
       }
 
       // 主人保护：撅主人会被反撅
       const protectList = Config.get('protectList') || []
       if (protectList.includes(targetCode) && Config.get('masterProtect')) {
         const masters = (await getMasterQQ()).map(q => String(q))
-        const idx = imgUrls.length === 1 ? 0 : 1
-        const url = imgUrls[idx]
-        if (typeof url === 'string' && url.startsWith('https://q1.qlogo.cn')) {
-          const split = url.split('=')
-          const targetQQ = split[split.length - 1]
-          if (masters.includes(targetQQ)) {
-            imgUrls = imgUrls.length === 1 ? [myAvatar] : [url, myAvatar]
-          }
+        // 单图表情里被撅的就是第 0 张，多图时第 0 张是发起人自己、第 1 张才是目标
+        const idx = imgs.length === 1 ? 0 : 1
+        const victim = imgs[idx]
+        if (victim?.uid != null && masters.includes(String(victim.uid))) {
+          // 一张图就变成撅自己，两张图就把顺序调过来 —— 主人在前，你在后
+          imgs = imgs.length === 1 ? [me] : [victim, me]
         }
       }
 
-      imgUrls = imgUrls.slice(0, Math.min(info.params_type.max_images, imgUrls.length))
+      imgs = imgs.slice(0, Math.min(info.params_type.max_images, imgs.length))
       ensureDir('original')
       const maxBytes = (Config.get('maxFileSize') || 10) * 1024 * 1024
       const timeoutMs = Config.get('imageTimeout') || 15000
       // 并行下：原来是 for + await 串行，多图表情要白等好几个来回
-      const downloaded = await Promise.all(imgUrls.map(async url => {
+      const downloaded = await Promise.all(imgs.map(async ({ url }) => {
         try {
           return await fetchImage(url, maxBytes, timeoutMs)
         } catch (err) {
@@ -197,14 +195,26 @@ export class memeMaker extends plugin {
       }
     }
 
+    // 群成员信息先算出来：底下「没给文字就拿被 @ 的人当文字」也要用同一份名字。
+    // 原来那里直接读 at 段的 text，可 at 段带不带 text 是各适配器自己定的，
+    // 不带的时候文字就成了空串，出图是一张没字的表情
+    const ats = e.message.filter(m => m.type === 'at')
+    if (ats.length > 0) {
+      userInfos = await Promise.all(ats.map(ui => getMemberInfo(e, ui.qq, ui.text)))
+    } else {
+      userInfos = [{
+        qq: e.sender.user_id,
+        text: e.sender.card || e.sender.nickname || `用户${e.sender.user_id}`,
+        gender: e.sender.sex || 'unknown'
+      }]
+    }
+    const firstName = _.trim(userInfos[0].text, '@')
+
     if (text && info.params_type.max_texts === 0) {
       for (const loc of fileLocs) unlinkQuietly(loc)
       return false
     }
-    if (!text && info.params_type.min_texts > 0) {
-      const ats = e.message.filter(m => m.type === 'at')
-      text = ats.length > 0 ? _.trim(ats[0].text, '@') : (e.sender.card || e.sender.nickname)
-    }
+    if (!text && info.params_type.min_texts > 0) text = firstName
 
     const texts = text.split('/', info.params_type.max_texts)
     if (texts.length < info.params_type.min_texts) {
@@ -215,38 +225,7 @@ export class memeMaker extends plugin {
     texts.forEach(t => formData.append('texts', t))
 
     if (info.params_type.max_texts > 0 && formData.getAll('texts').length === 0) {
-      const ats = e.message.filter(m => m.type === 'at')
-      formData.append('texts', ats.length > 0
-        ? _.trim(ats[0].text, '@')
-        : (e.sender.card || e.sender.nickname))
-    }
-
-    // 群成员信息，给 user_infos 用
-    const ats = e.message.filter(m => m.type === 'at')
-    if (ats.length > 0) {
-      userInfos = await Promise.all(ats.map(async ui => {
-        try {
-          const response = await Bot.sendApi('get_group_member_info', {
-            group_id: Number(e.group_id),
-            user_id: Number(ui.qq)
-          })
-          const m = response?.data || {}
-          return {
-            qq: ui.qq,
-            gender: m.sex || 'unknown',
-            text: m.card || m.nickname || `用户${ui.qq}`
-          }
-        } catch (err) {
-          logger.error(`${logPrefix} 获取群成员信息失败: ${err.message}`)
-          return { qq: ui.qq, gender: 'unknown', text: `用户${ui.qq}` }
-        }
-      }))
-    }
-    if (!userInfos) {
-      userInfos = [{
-        text: e.sender.card || e.sender.nickname,
-        gender: e.sender.sex
-      }]
+      formData.append('texts', firstName)
     }
 
     const argsStr = handleArgs(targetCode, info, args, userInfos)

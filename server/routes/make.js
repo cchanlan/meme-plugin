@@ -3,6 +3,7 @@ import Config from '../../model/config.js'
 import MemeApi from '../../model/memeApi.js'
 import MemeIndex from '../../model/memeIndex.js'
 import { argSchemas, getEnum } from '../../utils/args.js'
+import { qqAvatar } from '../../utils/user.js'
 import { logPrefix } from '../../constants/path.js'
 
 /**
@@ -97,7 +98,7 @@ async function slotToBuffer (raw, maxBytes) {
 
   if (/^\d{5,12}$/.test(s)) {
     const timeout = Config.get('imageTimeout') || 15000
-    const r = await fetch(`https://q1.qlogo.cn/g?b=qq&s=640&nk=${s}`, {
+    const r = await fetch(qqAvatar(s), {
       signal: AbortSignal.timeout(timeout)
     })
     if (!r.ok) throw bad(`取 QQ ${s} 的头像失败：HTTP ${r.status}`)

@@ -3,6 +3,7 @@ import Preview from '../model/preview.js'
 import MemeIndex from '../model/memeIndex.js'
 import { dataDir, logPrefix } from '../constants/path.js'
 import { mkdirs } from './file.js'
+import { qqAvatar } from './user.js'
 import { shotHtml, THEME_CSS } from './browser.js'
 
 /**
@@ -147,9 +148,8 @@ export async function renderStats (s, extra = {}) {
     memes.push({ ...m, uri, name: kws?.[0] ? `#${kws[0]}` : m.key })
   }
 
-  const avatars = await Promise.all(
-    s.users.map(u => toDataUri(`https://q1.qlogo.cn/g?b=qq&s=100&nk=${u.key}`))
-  )
+  // 榜单里是 28px 的小圆头像，取 100 档就够，没必要拉原图
+  const avatars = await Promise.all(s.users.map(u => toDataUri(qqAvatar(u.key, 100))))
 
   const memeMax = s.memes[0]?.n || 0
   const userMax = s.users[0]?.n || 0
