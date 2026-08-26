@@ -1,6 +1,30 @@
 import Config from './config.js'
 import { logPrefix } from '../constants/path.js'
 
+/**
+ * 连不上时把 undici 那句 `fetch failed` 翻译成人话。
+ *
+ * 原样抛出去的话，用户看到的就是「表情生成失败: fetch failed」—— 既不知道是哪个
+ * 地址连不上，也不知道该去看服务还是改配置。卸载掉本机服务之后每次生成都是这句，
+ * 而列表和 Web 站靠本地索引照旧显示 944 个表情，很容易以为是插件坏了。
+ */
+function netError (err) {
+  const timeout = Config.get('apiTimeout') || 30000
+  if (err?.name === 'AbortError') {
+    return new Error(`meme 服务 ${Config.getApiUrl()} 超过 ${timeout}ms 没响应，可能正在扫描表情目录，等十几秒再试`)
+  }
+  const code = err?.cause?.code || err?.code || ''
+  if (/^(ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|ECONNRESET|EAI_AGAIN|ETIMEDOUT|UND_ERR)/.test(code) ||
+    /fetch failed/i.test(err?.message || '')) {
+    return new Error(
+      `连不上 meme 服务 ${Config.getApiUrl()}${code ? `（${code}）` : ''}\n` +
+      '服务没在跑，或者配置 memeApiUrl 填的地址不对。发 #meme部署状态 看一眼；' +
+      '本机没有服务的话发 #meme部署 装一套，或把 memeApiUrl 指向现成的服务'
+    )
+  }
+  return err
+}
+
 /** 带超时的 fetch */
 async function request (path, options = {}) {
   const url = Config.getApiUrl() + path
@@ -9,6 +33,8 @@ async function request (path, options = {}) {
   const timer = setTimeout(() => ctrl.abort(), timeout)
   try {
     return await fetch(url, { ...options, signal: ctrl.signal })
+  } catch (err) {
+    throw netError(err)
   } finally {
     clearTimeout(timer)
   }

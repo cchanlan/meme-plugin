@@ -52,3 +52,16 @@ export function blocked (e) {
   if (e.group_id && isGroupDisabled(e.group_id)) return true
   return false
 }
+
+/**
+ * 索引为空时的统一提示（列表 / 搜索 / 分类共用）。
+ *
+ * 原本三处都写「请先发 #meme更新」，但**卸载完本机服务**之后索引会被清空，
+ * 这时候发 #meme更新 只会再撞一次「连不上」——得把「换个地址」和「装一套」
+ * 两条出路一起给出来，否则用户只能在同一条死路上来回撞。
+ */
+export function emptyIndexTip () {
+  return '😶 本地还没有表情索引\n' +
+    `有能连上的 meme 服务就发 #meme刷新 拉一次（当前地址：${Config.getApiUrl()}）\n` +
+    '本机没有服务的话发 #meme部署 装一套，或把配置 memeApiUrl 指向现成的服务'
+}

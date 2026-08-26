@@ -5,9 +5,10 @@ import Config from '../model/config.js'
 import MemeApi from '../model/memeApi.js'
 import MemeIndex from '../model/memeIndex.js'
 import Preview from '../model/preview.js'
-import { dataDir, logPrefix } from '../constants/path.js'
+import { logPrefix } from '../constants/path.js'
 import { mkdirs } from '../utils/file.js'
 import { syncMemeDirs, reposRoot } from '../utils/memeDirs.js'
+import { clearImageCaches } from '../utils/cleanup.js'
 import { pm2 } from '../utils/pm2.js'
 
 /**
@@ -272,20 +273,6 @@ export class memeUpdate extends plugin {
 }
 
 /**
- * 表情变了，出图缓存全作废。
- * 列表分页图、分类/搜索拼图、以及旧表情的预览图和缩略图都要清，
- * 否则会拿旧图糊弄人。
+ * 表情变了，出图缓存全作废 —— 实现搬到了 utils/cleanup.js，
+ * 卸载那侧也要用同一份（两处各写一遍容易漏掉新增的缓存目录）。
  */
-function clearImageCaches () {
-  for (const sub of ['list_cache', 'preview_cache', 'thumb_cache']) {
-    const dir = path.join(dataDir, sub)
-    try {
-      if (!fs.existsSync(dir)) continue
-      for (const f of fs.readdirSync(dir)) {
-        try { fs.unlinkSync(path.join(dir, f)) } catch {}
-      }
-    } catch (err) {
-      logger.error(`${logPrefix} 清理 ${sub} 失败: ${err.message}`)
-    }
-  }
-}

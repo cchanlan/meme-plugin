@@ -2,9 +2,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import Config from '../model/config.js'
+import MemeApi from '../model/memeApi.js'
+import MemeIndex from '../model/memeIndex.js'
 import { dataDir, logPrefix } from '../constants/path.js'
 import { pm2, pm2Proc, pm2Bin, resetPm2Cache } from '../utils/pm2.js'
 import { tomlPath, reposRoot } from '../utils/memeDirs.js'
+import { clearImageCaches } from '../utils/cleanup.js'
 
 /**
  * 一键卸载本机部署的 meme 服务（`#meme部署` 的反向操作）。
@@ -328,18 +331,32 @@ export class memeUninstall extends plugin {
     await e.reply('🗑 开始卸载，正在停进程、删目录…')
     const { done, fail, freed } = this.doUninstall(plan, all)
 
+    // 卸载完再探一次服务：还连得上（比如用户自己那套服务在跑、或 memeApiUrl 指着
+    // 别的机器）就别清索引，表情照旧能用。连不上才清 —— 索引是第二层缓存，
+    // 留着的话重启 Yunzai 会把 944 个表情原样载回来，列表、搜索、Web 站看着
+    // 一切正常，一发指令才报连不上，这比「表情列表空了」难懂得多
+    const stillAlive = await MemeApi.ping()
+    if (!stillAlive) {
+      const removed = MemeIndex.clear()
+      const imgs = clearImageCaches()
+      if (removed || imgs) {
+        done.push(`已清空本地索引和出图缓存（${removed} 个索引文件 / ${imgs} 张图）`)
+      }
+    }
+
     const lines = ['🗑 卸载完成\n']
     if (done.length) lines.push(...done.map(t => `✅ ${t}`))
     if (fail.length) lines.push('', ...fail.map(t => `❌ ${t}`))
     if (freed) lines.push(`\n共回收约 ${human(freed)}`)
     if (keep.length) lines.push('\n保留未动：', ...keep)
     // 结尾这句得看情况：把用户自己那套服务说成「没服务了」会让人以为卸载删多了
-    if (plan.proc.found && plan.proc.ours) {
-      lines.push('\n💡 插件部署的那套服务已经没了，表情功能要么把配置 memeApiUrl 指向现成服务，要么重新发 #meme部署')
-    } else if (plan.other.found) {
-      lines.push(`\n💡 你自己那套服务（pm2「${plan.other.name}」）还在跑，表情功能不受影响`)
+    if (stillAlive) {
+      lines.push(`\n💡 ${Config.getApiUrl()} 还连得上，表情功能不受影响，本地索引也照旧留着`)
+    } else if (plan.proc.found && plan.proc.ours) {
+      lines.push('\n💡 插件部署的那套服务已经没了，表情列表会变空 —— 这是故意的，' +
+        '免得列表里一堆点了却生成不了的表情。要恢复：把配置 memeApiUrl 指向现成服务后发 #meme刷新，或重新发 #meme部署')
     } else {
-      lines.push('\n💡 表情功能需要一个能连上的 meme 服务：配置 memeApiUrl 指过去，或发 #meme部署')
+      lines.push('\n💡 表情功能需要一个能连上的 meme 服务：配置 memeApiUrl 指过去后发 #meme刷新，或发 #meme部署')
     }
     await e.reply(lines.join('\n'))
     logger.info(`${logPrefix}卸载完成：${done.length} 项成功，${fail.length} 项失败`)

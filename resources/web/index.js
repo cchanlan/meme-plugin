@@ -71,6 +71,15 @@ function render () {
   const token = ++renderToken
   grid.innerHTML = ''
   $('#empty').hidden = list.length > 0
+  if (!list.length) {
+    // 「整站零个表情」和「搜索没命中」得分开说：卸载本机服务后本地索引会被清空，
+    // 这时候还挂着「试试搜猫」，访客只会以为搜索坏了
+    const none = ALL.length === 0
+    $('#empty-title').textContent = none ? '还没有表情数据' : '没找到相关表情'
+    $('#empty-hint').textContent = none
+      ? 'meme 服务可能没在跑，让机器人主人发 #meme刷新 拉一次'
+      : '试试搜「猫」「举牌」「鸣潮」这类词'
+  }
 
   const total = ALL.length
   const shown = list.length

@@ -83,6 +83,32 @@ const MemeIndex = {
   },
 
   /**
+   * 清空索引并删掉磁盘缓存。
+   *
+   * 卸载本机服务后必须清 —— 否则重启 Yunzai 会从 keyMap.json 把 944 个表情
+   * 原样载回来，列表、搜索、Web 站看着一切正常，一发指令才是 fetch failed。
+   * 「显示不出来」比「显示得出来但用不了」好懂得多。
+   */
+  clear () {
+    keyMap = {}
+    infos = {}
+    rebuildIndex()
+    blockCache = { sig: null, set: new Set() }
+    let removed = 0
+    for (const f of [KEYMAP_FILE(), INFOS_FILE()]) {
+      try {
+        if (fs.existsSync(f)) {
+          fs.rmSync(f, { force: true })
+          removed++
+        }
+      } catch (err) {
+        logger.error(`${logPrefix} 删除 ${f} 失败: ${err.message}`)
+      }
+    }
+    return removed
+  },
+
+  /**
    * 从服务端拉取最新数据并写盘。
    * meme-generator 只在进程启动时扫描 meme_dirs，所以调用方要先重启 meme 服务；
    * 而这里刷的是 Yunzai 侧的第二层缓存 —— 两层都刷了新表情才真能用。

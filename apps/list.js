@@ -4,7 +4,7 @@ import Config from '../model/config.js'
 import MemeIndex from '../model/memeIndex.js'
 import { renderGrid } from '../utils/gridImage.js'
 import { dataPath, ensureDir, unlinkQuietly } from '../utils/file.js'
-import { blocked } from '../utils/guard.js'
+import { blocked, emptyIndexTip } from '../utils/guard.js'
 import { logPrefix } from '../constants/path.js'
 
 /** 群里发的 Web 站入口，统一文案；图里不画链接（图上的 URL 点不了） */
@@ -64,7 +64,7 @@ export class memeList extends plugin {
   async showList (e) {
     if (blocked(e)) return false
     if (MemeIndex.isEmpty) {
-      await e.reply('表情包数据还没加载，请先发 #meme更新')
+      await e.reply(emptyIndexTip())
       return true
     }
 
@@ -98,7 +98,7 @@ export class memeList extends plugin {
   async showTags (e) {
     if (blocked(e)) return false
     if (MemeIndex.isEmpty) {
-      await e.reply('表情包数据还没加载，请先发 #meme更新')
+      await e.reply(emptyIndexTip())
       return true
     }
 

@@ -2,7 +2,7 @@ import Config from '../model/config.js'
 import MemeIndex from '../model/memeIndex.js'
 import { renderGrid } from '../utils/gridImage.js'
 import { unlinkQuietly } from '../utils/file.js'
-import { blocked } from '../utils/guard.js'
+import { blocked, emptyIndexTip } from '../utils/guard.js'
 import { logPrefix } from '../constants/path.js'
 
 export class memeSearch extends plugin {
@@ -29,7 +29,7 @@ export class memeSearch extends plugin {
       return true
     }
     if (MemeIndex.isEmpty) {
-      await e.reply('表情包数据还没加载，请先发 #meme更新')
+      await e.reply(emptyIndexTip())
       return true
     }
 

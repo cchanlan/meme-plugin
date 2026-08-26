@@ -1,7 +1,33 @@
 import path from 'node:path'
+import fs from 'node:fs'
 import Config from '../model/config.js'
 import { dataDir, logPrefix } from '../constants/path.js'
 import { cleanupStale, trimCacheDir } from './file.js'
+
+/**
+ * 表情变了，出图缓存全作废。
+ * 列表分页图、分类/搜索拼图、以及旧表情的预览图和缩略图都要清，
+ * 否则会拿旧图糊弄人 —— 卸载完服务后尤其明显：图还在，点了却生成不了。
+ * @returns {number} 删掉的文件数
+ */
+export function clearImageCaches () {
+  let n = 0
+  for (const sub of ['list_cache', 'preview_cache', 'thumb_cache']) {
+    const dir = path.join(dataDir, sub)
+    try {
+      if (!fs.existsSync(dir)) continue
+      for (const f of fs.readdirSync(dir)) {
+        try {
+          fs.unlinkSync(path.join(dir, f))
+          n++
+        } catch {}
+      }
+    } catch (err) {
+      logger.error(`${logPrefix} 清理 ${sub} 失败: ${err.message}`)
+    }
+  }
+  return n
+}
 
 /**
  * 一轮缓存维护。四类文件寿命完全不同，所以规则也不一样：
