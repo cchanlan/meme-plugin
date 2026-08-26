@@ -8,6 +8,7 @@ import Preview from '../model/preview.js'
 import { dataDir, logPrefix } from '../constants/path.js'
 import { mkdirs } from '../utils/file.js'
 import { syncMemeDirs, reposRoot } from '../utils/memeDirs.js'
+import { pm2 } from '../utils/pm2.js'
 
 /**
  * 单个仓库的路径。
@@ -205,16 +206,19 @@ export class memeUpdate extends plugin {
     const pm2Name = Config.get('deployed')
       ? Config.get('deployPm2Name')
       : Config.get('memePm2Name')
-    try {
-      msgs.push(`\n🔄 正在重启 meme 服务（${pm2Name}）...`)
-      execSync(`pm2 restart ${pm2Name}`, { encoding: 'utf-8', timeout: 120000 })
-      msgs.push('✅ meme 服务重启成功')
-    } catch (err) {
-      msgs.push(`❌ meme 服务重启失败：${err.message.split('\n')[0]}`)
-      msgs.push(`请检查 pm2 里的进程名是否叫「${pm2Name}」，可在配置里改 memePm2Name`)
+    msgs.push(`\n🔄 正在重启 meme 服务（${pm2Name}）...`)
+    // 走 utils/pm2.js：Windows / nvm 环境下 PATH 里常常没有 pm2，
+    // 直接 execSync('pm2 …') 会报 command not found，很容易被当成进程名填错
+    const r = pm2(['restart', pm2Name])
+    if (!r.ok) {
+      msgs.push(`❌ meme 服务重启失败：${(r.err || r.out || 'pm2 restart 失败').split('\n')[0]}`)
+      msgs.push(r.missing
+        ? '（这台机器上找不到 pm2 命令，不是进程名的问题）'
+        : `请检查 pm2 里的进程名是否叫「${pm2Name}」，可在配置里改 memePm2Name`)
       await e.reply(msgs.join('\n'))
       return true
     }
+    msgs.push('✅ meme 服务重启成功')
 
     // ③ 等服务重新扫描完 meme_dirs。
     // 实测它是扫完才开始监听（重启后约 7 秒连接被拒），所以能响应就代表扫完了；
@@ -250,18 +254,15 @@ export class memeUpdate extends plugin {
     if (!hotOk) {
       msgs.push('🔄 正在重启云崽兜底...')
       await e.reply(msgs.join('\n'))
-      try {
-        execSync('pm2 restart TRSS-Yunzai', { encoding: 'utf-8', timeout: 120000 })
-      } catch (err) {
-        // 进程名可能不叫 TRSS-Yunzai，兜底按 pm2 自身的 id 重启
-        logger.error(`${logPrefix} 按名字重启云崽失败: ${err.message}`)
-        try {
-          execSync(`pm2 restart ${process.env.pm_id ?? 'Yunzai'}`, { encoding: 'utf-8', timeout: 120000 })
-        } catch (err2) {
-          logger.error(`${logPrefix} 重启云崽失败: ${err2.message}`)
-          await e.reply(`❌ 自动重启失败，请手动重启：${err2.message.split('\n')[0]}`)
-        }
+      // 进程名可能不叫 TRSS-Yunzai，兜底按 pm2 自身给的 id 重启
+      let done = false
+      for (const target of ['TRSS-Yunzai', process.env.pm_id, 'Yunzai']) {
+        if (target === undefined || target === null || target === '') continue
+        const r = pm2(['restart', String(target)])
+        if (r.ok) { done = true; break }
+        logger.error(`${logPrefix} pm2 restart ${target} 失败: ${(r.err || '').split('\n')[0]}`)
       }
+      if (!done) await e.reply('❌ 自动重启失败，请手动重启 Yunzai')
       return true
     }
 

@@ -63,15 +63,12 @@ async function restartYunzai (e) {
   } catch (err) {
     logger.warn(`${logPrefix} 走宿主 #重启 失败，改用 pm2: ${err.message}`)
   }
-  const { execSync } = await import('node:child_process')
+  const { pm2 } = await import('../utils/pm2.js')
   for (const target of ['TRSS-Yunzai', process.env.pm_id, 'Yunzai']) {
     if (target === undefined || target === null || target === '') continue
-    try {
-      execSync(`pm2 restart ${target}`, { encoding: 'utf-8', timeout: 120000 })
-      return { ok: true }
-    } catch (err) {
-      logger.error(`${logPrefix} pm2 restart ${target} 失败: ${err.message.split('\n')[0]}`)
-    }
+    const r = pm2(['restart', String(target)])
+    if (r.ok) return { ok: true }
+    logger.error(`${logPrefix} pm2 restart ${target} 失败: ${(r.err || '').split('\n')[0]}`)
   }
   return { ok: false }
 }

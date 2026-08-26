@@ -39,8 +39,30 @@ fail () { echo "::FAIL::$1"; exit 1; }
 # ── 1. 环境自检 ────────────────────────────────────────
 step "检查运行环境"
 
+# 找一个可执行文件：PATH 之外再按常见位置翻一遍。
+# 起 Yunzai 的那个环境不一定加载过 nvm/profile —— pm2 明明装了却 command -v 找不到，
+# 就是因为它在 ~/.nvm/versions/node/vXX/bin 里而这个目录没进 PATH。
+find_bin () {
+  local name="$1"; shift
+  if command -v "$name" >/dev/null 2>&1; then command -v "$name"; return 0; fi
+  local p
+  for p in "$@"; do
+    [ -n "$p" ] && [ -x "$p" ] && { echo "$p"; return 0; }
+  done
+  return 1
+}
+
+# node 自己所在的目录：npm i -g 装的东西都落在这里
+NODE_BIN_DIR=""
+command -v node >/dev/null 2>&1 && NODE_BIN_DIR="$(dirname "$(command -v node)")"
+
 command -v git >/dev/null 2>&1 || fail "缺少 git，请先安装：apt install git"
-command -v pm2 >/dev/null 2>&1 || fail "缺少 pm2，请先安装：npm i -g pm2"
+PM2="$(find_bin pm2 \
+  "$NODE_BIN_DIR/pm2" \
+  /usr/local/bin/pm2 \
+  /usr/bin/pm2 \
+  "$HOME/.local/bin/pm2")" \
+  || fail "缺少 pm2，请先安装：npm i -g pm2"
 
 PY=""
 for c in python3 python; do
@@ -160,17 +182,17 @@ fi
 
 # ── 7. pm2 起服务 ─────────────────────────────────────
 step "启动 meme 服务"
-if pm2 describe "$PM2_NAME" >/dev/null 2>&1; then
-  pm2 restart "$PM2_NAME" >/dev/null 2>&1 || fail "pm2 restart 失败"
+if "$PM2" describe "$PM2_NAME" >/dev/null 2>&1; then
+  "$PM2" restart "$PM2_NAME" >/dev/null 2>&1 || fail "pm2 restart 失败"
   ok "服务已重启（$PM2_NAME）"
 else
   # 必须显式指定解释器：venv/bin/meme 是个没有扩展名的 Python 脚本，
   # pm2 猜不出来就默认拿 node 去跑，报 SyntaxError: Unexpected identifier 'meme_generator'
-  pm2 start "$VENV_DIR/bin/meme" --name "$PM2_NAME" --cwd "$DATA_DIR" \
+  "$PM2" start "$VENV_DIR/bin/meme" --name "$PM2_NAME" --cwd "$DATA_DIR" \
     --interpreter "$VENV_DIR/bin/python" -- run >/dev/null 2>&1 \
     || fail "pm2 start 失败"
   ok "服务已启动（$PM2_NAME）"
 fi
-pm2 save >/dev/null 2>&1 && ok "pm2 配置已保存（重启机器后自动拉起）"
+"$PM2" save >/dev/null 2>&1 && ok "pm2 配置已保存（重启机器后自动拉起）"
 
 echo "::DONE::部署完成"

@@ -284,6 +284,17 @@ QQ 气泡里图片最宽只显示约 420px，每格实际宽度就是 `420 ÷ �
 **表情数量对不上？**
 `#meme部署状态` 会同时显示服务端和本地索引的数量，不一致就发 `#meme刷新`。
 
+**Windows 上 `#meme部署` 说「缺少 pm2」/「需要 Python 3.9+」，可环境变量里明明有？**
+这是 PATH 继承的坑：Yunzai 进程的 PATH 停在它**启动那一刻**，之后装 Python、`npm i -g pm2`
+写进注册表的新 PATH，已经跑着的进程和它拉起来的 PowerShell 都看不见。所以 git（装在
+`Program Files`、开机就在系统 PATH 里）能找到，后装的 pm2（`%APPDATA%\npm`）和 Python 就找不到。
+
+现在部署脚本会自己绕开：从注册表直接读 Machine + User 的 Path 合进本会话，再按
+`%APPDATA%\npm\pm2.cmd`、`py -0p` 登记的解释器、`%LOCALAPPDATA%\Programs\Python\Python3*`
+这些常见位置翻一遍（`WindowsApps` 下那个 `python.exe` 是微软商店的占位存根，跑起来只会弹商店，
+会被排除）。插件自己调 pm2 的地方（`#meme更新` 重启服务、`#meme部署状态` 查进程）也做了同样的兜底。
+万一还是报缺失，**重启一次 Yunzai** 就一定能认到。
+
 ## 数据目录
 
 一切数据落在 `Yunzai/data/meme-plugin/`：

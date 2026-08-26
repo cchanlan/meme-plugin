@@ -26,6 +26,25 @@ try {
   $OutputEncoding = [System.Text.Encoding]::UTF8
 } catch {}
 
+# ── 先把 PATH 刷新一遍 ────────────────────────────────
+# Yunzai 进程的 PATH 停在它启动那一刻。装 Python / `npm i -g pm2` 时写进注册表的
+# 新 PATH，已经跑着的进程看不见，它 spawn 出来的这个 PowerShell 也继承不到 ——
+# 于是「环境变量里明明有 Python311、明明装了 pm2」，脚本却报「缺少 pm2」。
+# [Environment]::GetEnvironmentVariable(...,'Machine'/'User') 是直接读注册表的，
+# 拿到的是当下最新值，合进本会话就绕开了继承问题（不重启 Yunzai 也能认到）。
+try {
+  $fromReg = @(
+    [Environment]::GetEnvironmentVariable('Path', 'Machine'),
+    [Environment]::GetEnvironmentVariable('Path', 'User')
+  ) -join ';'
+  $seen = New-Object 'System.Collections.Generic.List[string]'
+  foreach ($p in (($fromReg + ';' + $env:Path) -split ';')) {
+    $q = $p.Trim().TrimEnd('\')
+    if ($q -and -not $seen.Contains($q)) { $seen.Add($q) }
+  }
+  $env:Path = $seen -join ';'
+} catch {}
+
 $VenvDir = Join-Path $DataDir 'venv'
 $ReposDir = Join-Path $DataDir 'repos'
 # Windows 上 meme-generator 读 %APPDATA%\meme_generator ——
@@ -42,6 +61,58 @@ function Step($m) { Write-Output "::STEP::$m" }
 function Ok($m) { Write-Output "::OK::$m" }
 function Fail($m) { Write-Output "::FAIL::$m"; exit 1 }
 
+<#
+  找一个外部命令的真实路径。
+  Get-Command 之外还按常见安装位置翻一遍 —— 装的时候没勾「Add to PATH」，
+  或者装完没重启 Yunzai，PATH 上就是没有。
+  同时排除 %LOCALAPPDATA%\Microsoft\WindowsApps 下的东西：那是微软商店的
+  「应用执行别名」存根，`python` 跑起来只会弹出商店页面、返回非 0 且什么都不输出。
+#>
+function Find-Exe($name, $fallbacks) {
+  foreach ($c in @(Get-Command $name -All -ErrorAction SilentlyContinue)) {
+    if ($c.Source -and $c.Source -notlike '*\WindowsApps\*') { return $c.Source }
+  }
+  foreach ($p in $fallbacks) {
+    if ($p -and (Test-Path $p)) { return $p }
+  }
+  return $null
+}
+
+<# 找 3.9+ 的 python.exe：PATH → py 启动器登记的版本 → 常见安装目录 #>
+function Find-Python {
+  $cands = New-Object 'System.Collections.Generic.List[string]'
+  foreach ($n in @('python', 'python3')) {
+    foreach ($c in @(Get-Command $n -All -ErrorAction SilentlyContinue)) {
+      if ($c.Source -and $c.Source -notlike '*\WindowsApps\*') { $cands.Add($c.Source) }
+    }
+  }
+  # py -0p 会列出所有已注册的解释器及其路径，形如「 -V:3.11 *  C:\...\python.exe」，
+  # 这是唯一能找到「装了但没进 PATH」那种的官方途径
+  if (Get-Command py -ErrorAction SilentlyContinue) {
+    foreach ($line in @(& py -0p 2>$null)) {
+      $m = [regex]::Match([string]$line, '([A-Za-z]:\\[^\r\n]*python\.exe)')
+      if ($m.Success) { $cands.Add($m.Groups[1].Value) }
+    }
+  }
+  foreach ($root in @("$env:LOCALAPPDATA\Programs\Python", $env:ProgramFiles, ${env:ProgramFiles(x86)}, 'C:\')) {
+    if (-not $root -or -not (Test-Path $root)) { continue }
+    foreach ($d in @(Get-ChildItem $root -Directory -Filter 'Python3*' -ErrorAction SilentlyContinue)) {
+      $exe = Join-Path $d.FullName 'python.exe'
+      if (Test-Path $exe) { $cands.Add($exe) }
+    }
+  }
+  foreach ($exe in ($cands | Select-Object -Unique)) {
+    $ver = & $exe -c 'import sys;print(f"{sys.version_info[0]}.{sys.version_info[1]}")' 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $ver) { continue }
+    $parts = ([string]$ver).Trim().Split('.')
+    if ($parts.Count -ge 2 -and $parts[0] -eq '3' -and [int]$parts[1] -ge 9) { return $exe }
+  }
+  return $null
+}
+
+# 装完没重启 Yunzai 是最常见的原因，每条缺失提示都得带上这句
+$PathHint = '装过了还报这个，就是 Yunzai 进程还拿着旧的 PATH —— 重启 Yunzai 再发一次就行'
+
 # 订阅的表情仓库：目录名 / git 地址 / 分支 / 表情子目录
 # 子目录各仓库不一样（emoji / memes / meme），填错会让 meme_dirs 指向不存在的路径
 $Repos = @(
@@ -55,23 +126,29 @@ $Repos = @(
 # ── 1. 环境自检 ────────────────────────────────────────
 Step '检查运行环境'
 
-if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-  Fail '缺少 git，请先安装：https://git-scm.com/download/win'
-}
-if (-not (Get-Command pm2 -ErrorAction SilentlyContinue)) {
-  Fail '缺少 pm2，请先安装：npm i -g pm2'
+$Git = Find-Exe 'git' @(
+  "$env:ProgramFiles\Git\cmd\git.exe",
+  "${env:ProgramFiles(x86)}\Git\cmd\git.exe",
+  "$env:LOCALAPPDATA\Programs\Git\cmd\git.exe"
+)
+if (-not $Git) {
+  Fail "缺少 git，请先安装：https://git-scm.com/download/win`n（$PathHint）"
 }
 
-# 找一个 3.9+ 的 Python。Windows 上优先用 py 启动器，它能列出所有已装版本
-$Py = $null
-foreach ($cand in @('python', 'python3', 'py')) {
-  if (-not (Get-Command $cand -ErrorAction SilentlyContinue)) { continue }
-  $ver = & $cand -c 'import sys;print(f"{sys.version_info[0]}.{sys.version_info[1]}")' 2>$null
-  if ($LASTEXITCODE -ne 0 -or -not $ver) { continue }
-  $parts = $ver.Trim().Split('.')
-  if ($parts[0] -eq '3' -and [int]$parts[1] -ge 9) { $Py = $cand; break }
+# pm2 是 npm 全局包，Windows 上落在 %APPDATA%\npm\pm2.cmd（不是 .exe）
+$Pm2 = Find-Exe 'pm2' @(
+  "$env:APPDATA\npm\pm2.cmd",
+  "$env:ProgramFiles\nodejs\pm2.cmd",
+  "$env:ALLUSERSPROFILE\npm\pm2.cmd"
+)
+if (-not $Pm2) {
+  Fail "缺少 pm2，请先安装：npm i -g pm2`n（$PathHint）"
 }
-if (-not $Py) { Fail '需要 Python 3.9+，当前没找到合适的版本（装的时候记得勾 Add to PATH）' }
+
+$Py = Find-Python
+if (-not $Py) {
+  Fail "需要 Python 3.9+（PATH、py 启动器、常见安装目录都翻过了）`n装的时候记得勾 Add Python to PATH；$PathHint"
+}
 Ok "环境就绪（$(& $Py --version 2>&1), git, pm2）"
 
 # ── 2. 建 venv ────────────────────────────────────────
@@ -115,11 +192,11 @@ foreach ($repo in $Repos) {
   if ($GitProxy) { $fullUrl = $GitProxy.TrimEnd('/') + '/' + $repo.url }
 
   if (Test-Path (Join-Path $target '.git')) {
-    & git -C $target pull --quiet 2>&1 | Out-Null
+    & $Git -C $target pull --quiet 2>&1 | Out-Null
     Write-Output "  ✓ $($repo.dir) 已更新"
   } else {
     # 把真实报错带出来，别只说「克隆失败」——分不清是网络、分支名还是代理前缀的问题
-    $err = & git clone --depth 1 -b $repo.branch $fullUrl $target 2>&1
+    $err = & $Git clone --depth 1 -b $repo.branch $fullUrl $target 2>&1
     if ($LASTEXITCODE -ne 0) {
       $last = ($err | Where-Object { $_ -notmatch '^Cloning' } | Select-Object -Last 1)
       Write-Output "  ⚠️ $($repo.dir) 克隆失败：$last"
@@ -178,18 +255,18 @@ if ($LASTEXITCODE -eq 0) { Ok '素材下载完成' } else { Write-Output '  ⚠�
 
 # ── 7. pm2 起服务 ─────────────────────────────────────
 Step '启动 meme 服务'
-& pm2 describe $Pm2Name 2>&1 | Out-Null
+& $Pm2 describe $Pm2Name 2>&1 | Out-Null
 if ($LASTEXITCODE -eq 0) {
-  & pm2 restart $Pm2Name 2>&1 | Out-Null
+  & $Pm2 restart $Pm2Name 2>&1 | Out-Null
   if ($LASTEXITCODE -ne 0) { Fail 'pm2 restart 失败' }
   Ok "服务已重启（$Pm2Name）"
 } else {
   # Windows 上 pm2 起 .exe 要显式给解释器，直接 pm2 start meme.exe 会被当脚本
-  & pm2 start $VenvMeme --name $Pm2Name --cwd $DataDir --interpreter none -- run 2>&1 | Out-Null
+  & $Pm2 start $VenvMeme --name $Pm2Name --cwd $DataDir --interpreter none -- run 2>&1 | Out-Null
   if ($LASTEXITCODE -ne 0) { Fail 'pm2 start 失败' }
   Ok "服务已启动（$Pm2Name）"
 }
-& pm2 save 2>&1 | Out-Null
+& $Pm2 save 2>&1 | Out-Null
 if ($LASTEXITCODE -eq 0) { Ok 'pm2 配置已保存（重启机器后自动拉起）' }
 
 Write-Output '::DONE::部署完成'

@@ -6,6 +6,7 @@ import MemeApi from '../model/memeApi.js'
 import MemeIndex from '../model/memeIndex.js'
 import { dataDir, pluginResources, logPrefix } from '../constants/path.js'
 import { encodedCommandArgv, cleanPsError, looksBlocked } from '../utils/psShell.js'
+import { pm2Bin, pm2Proc, resetPm2Cache } from '../utils/pm2.js'
 
 const IS_WIN = process.platform === 'win32'
 
@@ -16,11 +17,26 @@ const IS_WIN = process.platform === 'win32'
  * 它读 .ps1 时**不看 UTF-8 就按系统 ANSI(GBK) 解码**，本脚本满篇中文，
  * 轻则提示乱码、重则把字符串解成半个字节序列。pwsh 7 默认 UTF-8，没这问题。
  * 找不到 pwsh 才退回 powershell.exe（脚本已加 BOM，5.1 也能正确读中文）。
+ *
+ * 除了 PATH 还按安装目录翻一遍：pwsh 是装完之后才写进机器 PATH 的，
+ * 已经跑着的 Yunzai 看不到这次变更（同 utils/pm2.js 里那套道理）。
  */
 function winShell () {
-  for (const exe of ['pwsh.exe', 'pwsh']) {
+  const dirs = [
+    process.env.ProgramFiles,
+    process.env['ProgramFiles(x86)'],
+    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Microsoft')
+  ].filter(Boolean)
+  const cands = ['pwsh.exe', 'pwsh']
+  for (const d of dirs) {
+    const p = d.endsWith('Microsoft')
+      ? path.join(d, 'WindowsApps', 'pwsh.exe')
+      : path.join(d, 'PowerShell', '7', 'pwsh.exe')
+    if (fs.existsSync(p)) cands.push(p)
+  }
+  for (const exe of cands) {
     try {
-      execSync(`${exe} -NoProfile -Command "exit 0"`, { stdio: 'ignore', timeout: 15000 })
+      execSync(`"${exe}" -NoProfile -Command "exit 0"`, { stdio: 'ignore', timeout: 15000 })
       return exe
     } catch {}
   }
@@ -92,6 +108,8 @@ export class memeDeploy extends plugin {
   }
 
   async status (e) {
+    // 每次都重新探一遍 pm2：主人可能刚 npm i -g pm2，探测结果不该被上次的缓存钉死
+    resetPm2Cache()
     const venvBin = venvMemePath()
     const customRepos = String(Config.get('reposDir') || '').trim()
     const reposDir = customRepos || path.join(dataDir, 'repos')
@@ -127,11 +145,9 @@ export class memeDeploy extends plugin {
     lines.push(`   路径：${reposDir}${customRepos ? '（配置指定）' : '（默认）'}`)
 
     let pm2State = '未找到'
-    try {
-      const out = execSync(`pm2 jlist`, { encoding: 'utf-8' })
-      const proc = JSON.parse(out).find(p => p.name === pm2Name)
-      pm2State = proc ? `${proc.pm2_env.status}（重启 ${proc.pm2_env.restart_time} 次）` : '未找到'
-    } catch {}
+    const proc = pm2Proc(pm2Name)
+    if (proc) pm2State = `${proc.pm2_env.status}（重启 ${proc.pm2_env.restart_time} 次）`
+    else if (!pm2Bin()) pm2State = '查不了（本进程找不到 pm2 命令）'
     lines.push(`${pm2State.includes('online') ? '✅' : '⬜'} pm2 进程「${pm2Name}」：${pm2State}`)
 
     if (!alive) {
