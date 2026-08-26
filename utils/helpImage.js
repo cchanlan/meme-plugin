@@ -122,7 +122,7 @@ export async function renderHelp (info = {}) {
     ['#meme部署状态', '查服务健康度'],
     ['#meme清缓存', '清空预览图缓存'],
     ['#meme插件更新', '更新插件本体，非表情'],
-    ...(local ? [['#meme部署', '本机装一套 meme 服务']] : [])
+    ...(local ? [['#meme部署 / #meme卸载', '本机装一套 meme 服务 / 卸掉']] : [])
   ], 'lilac')
 
   const tips = tipBlock('💡', '小贴士', [
