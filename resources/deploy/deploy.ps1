@@ -70,7 +70,13 @@ function Fail($m) { Write-Output "::FAIL::$m"; exit 1 }
 #>
 function Find-Exe($name, $fallbacks) {
   foreach ($c in @(Get-Command $name -All -ErrorAction SilentlyContinue)) {
-    if ($c.Source -and $c.Source -notlike '*\WindowsApps\*') { return $c.Source }
+    # 跳过 npm 生成的 .ps1 包装：Get-Command 在 PowerShell 里把 ExternalScript
+    # 排在 Application 前面，pm2 会优先命中 pm2.ps1 而不是 pm2.cmd。而那个包装是
+    # `& node .../bin/pm2 $args` —— PowerShell 收集 $args 时会**吃掉参数终止符 `--`**，
+    # 于是后面 `pm2 start meme.exe ... -- run` 的 run 变成多余的位置参数被 pm2 丢弃，
+    # 启动的成了不带子命令的 meme.exe（只打印帮助就退出）→ pm2 无限重启。
+    # 走 .cmd 用 %* 原样转发，`--` 和 run 都能完整到达 pm2。
+    if ($c.Source -and $c.Source -notlike '*\WindowsApps\*' -and $c.Source -notlike '*.ps1') { return $c.Source }
   }
   foreach ($p in $fallbacks) {
     if ($p -and (Test-Path $p)) { return $p }
@@ -102,7 +108,14 @@ function Find-Python {
     }
   }
   foreach ($exe in ($cands | Select-Object -Unique)) {
-    $ver = & $exe -c 'import sys;print(f"{sys.version_info[0]}.{sys.version_info[1]}")' 2>$null
+    # 探版本的 python 代码里**一个双引号都不能有**：Windows PowerShell 5.1 把参数
+    # 传给原生命令时，会把参数内部的 " 连同它一起吞掉（pwsh 7.3+ 才用
+    # $PSNativeCommandArgumentPassing='Standard' 修好这件事）。没装 pwsh 7 的机器上
+    # apps/deploy.js 的 winShell() 会退回 powershell.exe，原来的 f"{...}" 到了
+    # python 手里就成了 f{...} → SyntaxError → 退出码 1 → 每个候选都被下面这句
+    # continue 掉 → Find-Python 返回 $null，于是「明明装了 3.11」也报「需要 3.9+」。
+    # 用 sep=chr(46) 拼小数点，全程零引号，两种 PowerShell 下行为一致。
+    $ver = & $exe -c 'import sys;print(sys.version_info[0],sys.version_info[1],sep=chr(46))' 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $ver) { continue }
     $parts = ([string]$ver).Trim().Split('.')
     if ($parts.Count -ge 2 -and $parts[0] -eq '3' -and [int]$parts[1] -ge 9) { return $exe }
@@ -221,7 +234,7 @@ if (Test-Path $ConfigFile) {
 # TOML 里的路径要用正斜杠或转义反斜杠，否则 \m \t 之类会被当转义序列
 $dirsToml = ($MemeDirs | ForEach-Object { '"' + $_.Replace('\', '/') + '"' }) -join ','
 
-@"
+$Toml = @"
 # 由 meme-plugin 的 #meme部署 生成
 [meme]
 load_builtin_memes = true
@@ -245,7 +258,15 @@ log_level = "INFO"
 [server]
 host = ""
 port = $Port
-"@ | Set-Content -Path $ConfigFile -Encoding UTF8
+"@
+# 必须落成**不带 BOM** 的 UTF-8：Windows PowerShell 5.1 的 `-Encoding UTF8` 是「带 BOM」，
+# 而 pwsh 6+ 的 utf8 才是无 BOM（同 Find-Python 那处，都是 5.1 与 7 的语义差异）。
+# meme_generator 用 toml 库直接 open() 读这个文件，BOM 会粘在第一个字符上，
+# 首行的 # 注释于是被当成 key 名的一部分：
+#   TomlDecodeError: Found invalid character in key name: '#' (line 1 column 2)
+# 结果 meme run 一启动就抛异常 → pm2 反复重启到 errored，端口始终不监听。
+# 用 .NET 显式指定 UTF8Encoding($false)，两种 PowerShell 下都无 BOM。
+[System.IO.File]::WriteAllText($ConfigFile, ($Toml + "`n"), (New-Object System.Text.UTF8Encoding($false)))
 Ok "配置已写入 $ConfigFile"
 
 # ── 6. 下载内置表情资源 ───────────────────────────────
