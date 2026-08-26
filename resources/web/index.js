@@ -400,6 +400,7 @@ async function make (m, box) {
     // 上一张的 objectURL 不撤掉，连点几次就把 blob 全留在内存里了
     if (lastOut) URL.revokeObjectURL(lastOut)
     lastOut = URL.createObjectURL(blob)
+    const isGif = blob.type === 'image/gif'
     const img = document.createElement('img')
     img.className = 'out-img'
     img.src = lastOut
@@ -407,8 +408,16 @@ async function make (m, box) {
     save.className = 'out-save'
     save.href = lastOut
     save.download = `${m.key}.${blob.type.split('/')[1] || 'gif'}`
-    save.textContent = '⬇ 保存到相册'
+    save.textContent = isGif ? '⬇ 保存 GIF' : '⬇ 保存图片'
     out.append(img, save)
+    // 浏览器的右键「复制图像」是把图**解码成位图**放进剪贴板的（剪贴板只认 PNG），
+    // GIF 这么复制过去就只剩第一帧 —— 不是这里生成错了，所以得当场说清楚怎么发才对
+    if (isGif) {
+      const tip = document.createElement('div')
+      tip.className = 'out-tip'
+      tip.textContent = '这是动图：右键「复制图像」粘到 QQ 会变成静态图，要点上面的按钮存成 .gif 再发（手机长按图片保存）'
+      out.appendChild(tip)
+    }
   } catch (err) {
     const tip = document.createElement('div')
     tip.className = 'out-err'

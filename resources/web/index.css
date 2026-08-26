@@ -635,6 +635,15 @@ body::before {
 
 .out-err { font-size: 13px; color: var(--pink-deep); line-height: 1.5; }
 
+/* 动图的发送提示：比按钮弱一档，别抢「保存」的注意力 */
+.out-tip {
+  margin-top: 7px;
+  font-size: 11.5px;
+  color: var(--sub);
+  line-height: 1.55;
+  text-align: left;
+}
+
 /* 滚动条也配色，桌面端才看得到 */
 .sheet-body::-webkit-scrollbar { width: 6px; }
 .sheet-body::-webkit-scrollbar-thumb {
