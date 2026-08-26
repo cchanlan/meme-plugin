@@ -49,6 +49,7 @@ export class memeHelp extends plugin {
         '🌸 常用指令',
         '#摸头 / #摸头 @某人 / 引用图片 + #摸头',
         '#一巴掌 笨蛋　多段文字用 / 隔开',
+        '#摸头详情　看这个表情支持哪些参数',
         '#meme搜索 猫　#meme列表　#meme分类',
         '#meme排行　看谁最能整活',
         `共 ${MemeIndex.memeCount} 个表情 / ${MemeIndex.keywordCount} 个关键词`
@@ -75,6 +76,8 @@ export class memeHelp extends plugin {
       '  引用图片 + #表情名 —— 用图里的图',
       '  #表情名#参数 —— 如 #爬#33、#一直#循环',
       '  多段文字用 / 隔开 —— 如 #高低情商 会说话/不会说话',
+      '  #表情名详情 —— 出图看这个表情支持哪些参数、默认文字是什么',
+      '                 如 #摸头详情；写成 #摸头帮助 也一样',
       '',
       '【找表情】'
     ]
@@ -86,7 +89,6 @@ export class memeHelp extends plugin {
     lines.push('  #meme搜索 关键词 —— 出预览图，支持按分类搜')
     lines.push('  #meme列表 —— 分页看全部（每页 24 个，带预览图）')
     lines.push('  #meme分类 —— 按作品/系列看，如 #meme分类 鸣潮')
-    lines.push('  #表情名详情 —— 看这个表情支持什么参数')
     lines.push('  #随机meme —— 随机来一个')
     lines.push('  #meme排行 —— 出图看谁最能整活、哪个表情最火')
     lines.push('')
