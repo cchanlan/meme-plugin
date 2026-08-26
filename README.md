@@ -31,6 +31,8 @@ git clone https://github.com/cchanlan/meme-plugin.git
 重启 Yunzai 即可。**无需 npm install** —— 插件不引入任何新依赖，用的都是 Yunzai 主仓库已有的
 （yaml / chokidar / lodash / puppeteer / sharp / node-fetch）。
 
+装好之后要升级，发 `#meme插件更新`（主人权限）就行，它自己 `git pull` 并在改到代码时重启 Yunzai。
+
 ## meme 服务
 
 插件本身不含表情生成能力，需要一个 meme-generator 服务。三种方式任选：
@@ -132,6 +134,14 @@ Linux / macOS / Windows 都能跑，差异集中在路径和部署脚本上：
 | `#meme清缓存` | 仅主人 | 清空预览图/缩略图缓存（平时每 6 小时按 `maxCacheMB` 自动淘汰一次，这个是手动立刻清） |
 | `#meme清空统计` | 仅主人 | 排行榜清零重来 |
 | `#meme部署` | 仅主人 | 可选：在本机部署一套 meme 服务 |
+| `#meme插件更新` | 仅主人 | **更新插件本体**（不是表情）。改到代码会自动重启 Yunzai；加后缀写成 `#meme插件更新不重启` 就只拉不重启。本地改过文件导致拉不动时发 `#meme插件强制更新` |
+| `#meme版本` | 仅主人 | 看当前版本，并检查远端有没有新提交 |
+
+> `#meme更新` 和 `#meme插件更新` 是两件事：前者拉**表情资源**（仓库 → `meme_dirs` → 重启 meme 服务 → 刷索引），
+> 后者拉**插件代码**（git pull → 按需重启 Yunzai）。名字容易混，看清楚有没有「插件」二字。
+>
+> `#meme插件更新` 只在插件目录是 git 仓库时可用（下载 zip 解压装的没有 `.git`，重新 `git clone` 一次即可）。
+> 用户配置 `config/config.yaml` 不在版本库里，普通更新和强制更新都不会动它。
 
 ## Web 预览站
 

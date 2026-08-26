@@ -105,6 +105,9 @@ export class memeHelp extends plugin {
     lines.push('  #meme部署状态 —— 查看服务健康度')
     lines.push('  #meme清缓存 —— 清空预览图/缩略图缓存')
     lines.push('  #meme清空统计 —— 排行榜清零重来')
+    lines.push('  #meme插件更新 —— 更新插件本体（和 #meme更新 不是一回事）')
+    lines.push('                   改到代码会自动重启，加「不重启」可以不重启')
+    lines.push('  #meme版本 —— 看当前版本，并检查远端有没有新的')
     if (local) lines.push('  #meme部署 —— 可选：在本机装一套 meme 服务')
     return lines.join('\n')
   }
