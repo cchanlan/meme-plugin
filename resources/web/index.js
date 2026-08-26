@@ -26,7 +26,12 @@ async function boot () {
     renderTags()
     render()
   } catch (err) {
-    $('#stat').textContent = '数据加载失败：' + err.message
+    // 只改顶部那行小字的话，页面就是一片空白 —— 访客既不知道出了什么事，
+    // 也不知道能怎么办。把空态区块也点亮，跟「没搜到」用同一块位置
+    $('#stat').textContent = '数据加载失败'
+    $('#empty').hidden = false
+    $('#empty-title').textContent = '加载失败了'
+    $('#empty-hint').textContent = `${err.message} —— 刷新一下，或者让机器人主人看看 meme 服务还在不在`
   }
 }
 
@@ -275,6 +280,15 @@ function slot (i, m) {
   qq.inputMode = 'numeric'
 
   const st = { dataUrl: '', qq }
+  // 选了文件就清 QQ 框，填了 QQ 号也得反过来清掉已选的文件：
+  // 取值时是 `dataUrl || qq`，图片优先，否则后填的 QQ 号会被静默忽略，
+  // 用户看着自己填了号、出来的却还是之前那张图
+  qq.oninput = () => {
+    if (!st.dataUrl || !qq.value.trim()) return
+    st.dataUrl = ''
+    file.value = ''
+    face.textContent = i < m.minImages ? `＋ 第 ${i + 1} 张` : `＋ 第 ${i + 1} 张 · 可选`
+  }
   file.onchange = async () => {
     const f = file.files[0]
     if (!f) return
@@ -374,7 +388,15 @@ async function make (m, box) {
   const btn = box.querySelector('.make-go')
   const out = box.querySelector('.make-out')
 
-  const images = slots.map(s => s.dataUrl || s.qq.value.trim()).filter(Boolean)
+  const images = slots.map(s => s.dataUrl || s.qq.value.trim())
+  // 只砍尾部的空位。中间空着不能压缩掉：后面的图会挪到前一个位置上，
+  // 多图表情的位置有语义（谁在左、谁被拍），出来的图就不是他拼的那张
+  while (images.length && !images[images.length - 1]) images.pop()
+  const hole = images.findIndex(v => !v)
+  if (hole >= 0) {
+    toast(`第 ${hole + 1} 张图没填 —— 中间不能空着`)
+    return
+  }
   if (images.length < m.minImages) {
     toast(`至少要 ${m.minImages} 张图，也可以填 QQ 号`)
     return
@@ -386,9 +408,21 @@ async function make (m, box) {
     toast(`至少要填 ${m.minTexts} 段文字`)
     return
   }
+  // 必填的那几段真的得有内容：只数长度的话，「第一段空着、第二段填了」
+  // 也算够 2 段，发出去的图第一行是空白
+  const emptyText = texts.slice(0, m.minTexts).findIndex(t => !t)
+  if (emptyText >= 0) {
+    toast(`第 ${emptyText + 1} 段文字是必填的`)
+    return
+  }
   const args = {}
   for (const { a, ctrl } of argEls) {
-    args[a.name] = a.type === 'boolean' && !a.enum ? ctrl.checked : ctrl.value
+    if (a.type === 'boolean' && !a.enum) {
+      args[a.name] = ctrl.checked
+      continue
+    }
+    // 留空就不传，让服务端用自己的默认值 —— 传空串过去会被当成 0 / 空文本
+    if (ctrl.value !== '') args[a.name] = ctrl.value
   }
 
   btn.disabled = true

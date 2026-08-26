@@ -130,6 +130,11 @@ function buildArgs (info, argsIn, nick) {
     if (!(name in argsIn)) continue
     const enums = getEnum(schema)
     let v = argsIn[name]
+    // 空值一律当「没填」，让服务端用它自己的默认值。
+    // 不判的话 number 类型会被 `Number('') === 0` 悄悄改成 0
+    // （integer 有 parseInt 的 NaN 兜着，number 没有）——
+    // 用户只是没动那个数字框，出来的图却按 0 渲染了。
+    if (v === '' || v === null || v === undefined) continue
     if (schema.type === 'integer') {
       v = parseInt(v)
       if (Number.isNaN(v)) continue
@@ -206,9 +211,18 @@ export async function postMake (req, res, urlObj) {
     }
 
     const buffers = []
-    for (const item of rawImages) {
-      const buf = await slotToBuffer(item, maxBytes)
-      if (buf) buffers.push(buf)
+    for (let i = 0; i < rawImages.length; i++) {
+      const buf = await slotToBuffer(rawImages[i], maxBytes)
+      if (buf) {
+        buffers.push(buf)
+        continue
+      }
+      // 中间的空槽不能默默跳过：后面的图会整体往前挪一位。
+      // 多图表情的位置是有语义的（谁在左、谁被拍），挪了位出来的就不是用户拼的那张，
+      // 而且他完全看不出哪里错了。和文字那边一样，只容许尾部留空。
+      if (rawImages.slice(i + 1).some(x => String(x || '').trim())) {
+        return fail(res, 400, `第 ${i + 1} 张图没填 —— 中间不能空着`)
+      }
     }
     if (buffers.length < (pt.min_images || 0)) {
       return fail(res, 400, `至少要 ${pt.min_images} 张图`)

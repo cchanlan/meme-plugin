@@ -5,7 +5,7 @@ import { unlinkQuietly } from '../utils/file.js'
 import { blocked } from '../utils/guard.js'
 import { logPrefix } from '../constants/path.js'
 
-/** 榜单前 N 名的纯文字版：图里字被 QQ 缩放后偏小，前几名再补一段可复制的 */
+/** 出图失败时的纯文字兜底：只列榜单前 N 名 */
 function topLine (s) {
   const lines = []
   if (s.memes.length) {
@@ -61,8 +61,7 @@ export class memeStats extends plugin {
     }
 
     if (loc) {
-      const text = [`🏆 累计 ${s.total} 次 · 今日 ${s.todayCount} 次`, topLine(s)].filter(Boolean)
-      await e.reply([segment.image(`file://${loc}`), text.join('\n')])
+      await e.reply(segment.image(`file://${loc}`))
       unlinkQuietly(loc)
       return true
     }
