@@ -6,6 +6,25 @@
  */
 
 let browserPromise = null
+/** 当前实例，用来判断 disconnected 事件是不是「现役」那一个发出来的 */
+let current = null
+
+async function doLaunch () {
+  const puppeteer = (await import('puppeteer')).default
+  const b = await puppeteer.launch({
+    headless: 'new',
+    args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+  })
+  current = b
+  // 只有现役实例掉线才清缓存：关掉旧实例时若无条件清，会把刚建好的新实例一起作废
+  b.on('disconnected', () => {
+    if (current === b) {
+      current = null
+      browserPromise = null
+    }
+  })
+  return b
+}
 
 /** 取浏览器，实例复用；已断开则重新 launch */
 export async function getBrowser () {
@@ -15,23 +34,23 @@ export async function getBrowser () {
       if (b.connected !== false) return b
     } catch {}
   }
-  const puppeteer = (await import('puppeteer')).default
-  browserPromise = puppeteer.launch({
-    headless: 'new',
-    args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
-  })
-  const b = await browserPromise
-  b.on('disconnected', () => { browserPromise = null })
-  return b
+  // 赋值必须同步做在前面：doLaunch 里有 `await import('puppeteer')`，
+  // 两个请求同时进来都会穿过上面的判断各自 launch 一个 Chromium，
+  // 先建好的那个从此没人引用、也没人关，一份 200MB+ 就这么漏掉了
+  // （榜单图和搜索图同时被触发是很常见的）。
+  browserPromise = doLaunch()
+  return await browserPromise
 }
 
 export async function closeBrowser () {
   if (!browserPromise) return
+  const p = browserPromise
+  browserPromise = null
+  current = null
   try {
-    const b = await browserPromise
+    const b = await p
     await b.close()
   } catch {}
-  browserPromise = null
 }
 
 /**

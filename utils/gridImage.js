@@ -1,4 +1,5 @@
 import path from 'node:path'
+import fs from 'node:fs'
 import Preview from '../model/preview.js'
 import { dataDir, logPrefix } from '../constants/path.js'
 import { mkdirs } from './file.js'
@@ -160,6 +161,19 @@ ${footer ? `<div class="ft">${esc(footer)}</div>` : ''}
 
   const dir = path.join(dataDir, 'list_cache')
   mkdirs(dir)
-  const loc = out || path.join(dir, `grid_${Date.now()}_${process.pid}.jpg`)
-  return shotHtml(html, loc, { width: columns * CELL_W + PAD_W })
+  const width = columns * CELL_W + PAD_W
+  if (!out) return shotHtml(html, path.join(dir, `grid_${Date.now()}_${process.pid}.jpg`), { width })
+
+  // 要落盘复用的那张（列表分页图）先写临时名再改名：同一页会被好几个人同时翻，
+  // 两个 screenshot 往同一路径写，中间那一刻读到的是半张图 ——
+  // 而这张图是当缓存留着的，一坏就得等 24 小时过期，期间每次翻页都发那张坏图。
+  const tmp = `${out}.${process.pid}_${Date.now()}.tmp`
+  await shotHtml(html, tmp, { width })
+  try {
+    fs.renameSync(tmp, out)
+    return out
+  } catch (err) {
+    logger.debug(`${logPrefix} 列表图改名失败，直接用临时文件: ${err.message}`)
+    return tmp
+  }
 }

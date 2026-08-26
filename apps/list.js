@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import crypto from 'node:crypto'
 import _ from 'lodash'
 import Config from '../model/config.js'
 import MemeIndex from '../model/memeIndex.js'
@@ -68,9 +69,15 @@ export class memeList extends plugin {
       return true
     }
 
-    const pageSize = Config.get('pageSize') || 80
+    const pageSize = Config.get('pageSize') || 24
     const codes = MemeIndex.allCodes()
     const totalPages = Math.ceil(codes.length / pageSize)
+    // 索引不空但一个都不剩，只能是 blackMemes 把它们全拉黑了。
+    // 不判的话下面会回「只有 0 页哦」，看着像插件坏了
+    if (totalPages === 0) {
+      await e.reply('能看的表情一个都没有了 —— 配置 blackMemes 把它们全拉黑了，去掉几个再看看')
+      return true
+    }
     const m = /(\d+)\s*$/.exec(e.msg)
     let page = m ? parseInt(m[1]) : 1
     if (page < 1) page = 1
@@ -81,7 +88,11 @@ export class memeList extends plugin {
 
     const pageCodes = codes.slice((page - 1) * pageSize, page * pageSize)
     try {
-      const loc = await renderPage(pageCodes, page, totalPages, `page_${page}_${pageSize}.jpg`)
+      // 缓存名带上这一页的内容指纹：只按页码命名的话，拉黑一个表情之后
+      // （改配置不会清图片缓存）旧图还在，被拉黑的表情继续挂在列表里露脸。
+      // 内容一变文件名就变，旧图交给 cleanupStale 24 小时后收走。
+      const sig = crypto.createHash('md5').update(pageCodes.join(',')).digest('hex').slice(0, 8)
+      const loc = await renderPage(pageCodes, page, totalPages, `page_${page}_${pageSize}_${sig}.jpg`)
       // 三行挤在同一个文本段里：分成多段发时 QQ 会把它们首尾粘住，看着像一行
       const web = webLine()
       const tip = `第 ${page}/${totalPages} 页 · 共 ${MemeIndex.memeCount} 个表情\n` +

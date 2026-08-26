@@ -36,6 +36,42 @@ function findCached (dir, key) {
   return null
 }
 
+/**
+ * 先写临时文件再改名，而不是直接 writeFileSync 到目标路径。
+ *
+ * 缓存的判断是「文件存在就直接读」，而网页版列表一次并发拉几十张缩略图，
+ * 同一个 key 完全可能一边在写、一边被另一个请求 readFileSync ——
+ * 读到的是写了一半的图，浏览器显示成破图，更糟的是**这个截断文件会一直留着**，
+ * 后面每次都命中它。同目录内的 rename 是原子的，读者只会看到完整文件。
+ */
+function writeAtomic (file, buffer) {
+  const tmp = `${file}.${process.pid}_${Date.now()}.tmp`
+  try {
+    fs.writeFileSync(tmp, buffer)
+    fs.renameSync(tmp, file)
+  } catch (err) {
+    try { fs.unlinkSync(tmp) } catch {}
+    throw err
+  }
+}
+
+/**
+ * 同一个 key 的并发请求合并成一次。
+ *
+ * 不合并的话，网页版列表首次打开会对同一张图发出多个请求（浏览器重试、
+ * 快速滚动触发的重复 IntersectionObserver 回调），每个都要走一趟服务端
+ * preview + 一次 sharp 压缩，白烧几倍 CPU。
+ */
+const inflight = new Map()
+
+function once (id, fn) {
+  const running = inflight.get(id)
+  if (running) return running
+  const p = fn().finally(() => inflight.delete(id))
+  inflight.set(id, p)
+  return p
+}
+
 const Preview = {
   /**
    * 原图。服务端 preview 接口没有缓存（同一 key 连续请求耗时一致），所以落盘。
@@ -49,17 +85,19 @@ const Preview = {
       if (hit) return { buffer: fs.readFileSync(hit.file), contentType: hit.contentType }
     }
 
-    const { buffer, contentType } = await MemeApi.getPreview(key)
-    if (useCache) {
-      try {
-        mkdirs(dir)
-        const ext = contentType.split('/')[1]?.split(';')[0] || 'png'
-        fs.writeFileSync(path.join(dir, `${key}.${ext}`), buffer)
-      } catch (err) {
-        logger.debug(`${logPrefix} 预览图缓存写入失败 ${key}: ${err.message}`)
+    return await once(`full:${key}`, async () => {
+      const { buffer, contentType } = await MemeApi.getPreview(key)
+      if (useCache) {
+        try {
+          mkdirs(dir)
+          const ext = contentType.split('/')[1]?.split(';')[0] || 'png'
+          writeAtomic(path.join(dir, `${key}.${ext}`), buffer)
+        } catch (err) {
+          logger.debug(`${logPrefix} 预览图缓存写入失败 ${key}: ${err.message}`)
+        }
       }
-    }
-    return { buffer, contentType }
+      return { buffer, contentType }
+    })
   },
 
   /**
@@ -74,26 +112,28 @@ const Preview = {
       return { buffer: fs.readFileSync(cached), contentType: 'image/webp' }
     }
 
-    const s = await getSharp()
-    const full = await this.getFull(key)
-    if (!s) return full
+    return await once(`thumb:${key}_${width}`, async () => {
+      const s = await getSharp()
+      const full = await this.getFull(key)
+      if (!s) return full
 
-    try {
-      const buffer = await s(full.buffer, { animated: false })
-        .resize({ width, height: width, fit: 'inside', withoutEnlargement: true })
-        .webp({ quality: 72, effort: 4 })
-        .toBuffer()
       try {
-        mkdirs(dir)
-        fs.writeFileSync(cached, buffer)
+        const buffer = await s(full.buffer, { animated: false })
+          .resize({ width, height: width, fit: 'inside', withoutEnlargement: true })
+          .webp({ quality: 72, effort: 4 })
+          .toBuffer()
+        try {
+          mkdirs(dir)
+          writeAtomic(cached, buffer)
+        } catch (err) {
+          logger.debug(`${logPrefix} 缩略图写入失败 ${key}: ${err.message}`)
+        }
+        return { buffer, contentType: 'image/webp' }
       } catch (err) {
-        logger.debug(`${logPrefix} 缩略图写入失败 ${key}: ${err.message}`)
+        logger.debug(`${logPrefix} 缩略图生成失败 ${key}，回退原图: ${err.message}`)
+        return full
       }
-      return { buffer, contentType: 'image/webp' }
-    } catch (err) {
-      logger.debug(`${logPrefix} 缩略图生成失败 ${key}，回退原图: ${err.message}`)
-      return full
-    }
+    })
   },
 
   /** 缓存统计，给部署状态用 */

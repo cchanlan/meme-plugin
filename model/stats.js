@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import MemeIndex from './memeIndex.js'
 import { dataDir, logPrefix } from '../constants/path.js'
 import { mkdirs } from '../utils/file.js'
 
@@ -136,15 +137,23 @@ const Stats = {
       .sort((a, b) => b.n - a.n)
       .slice(0, top)
     const days = Object.keys(d.days).sort()
+    // 拉黑的表情要从榜单里摘掉。计数是历史留下的，拉黑之前用过就一直在 memes 里，
+    // 不过滤的话 `#meme统计` 会照样打出它的关键词，出图时还会去拉它的预览图
+    // （utils/statsImage.js 每个条目配一张 120px 缩略图）——拿黑名单挡 NSFW 就白挡了。
+    // total 不动：那是「一共出了多少张」的事实，跟要不要展示某个表情是两回事。
+    const memes = {}
+    for (const [k, v] of Object.entries(d.memes)) {
+      if (!MemeIndex.isBlocked(k)) memes[k] = v
+    }
     return {
       total: d.total,
       since: d.since,
       todayCount: d.days[today()] || 0,
       activeDays: days.length,
-      memeKinds: Object.keys(d.memes).length,
+      memeKinds: Object.keys(memes).length,
       userCount: Object.keys(d.users).length,
       groupCount: Object.keys(d.groups).length,
-      memes: rank(d.memes),
+      memes: rank(memes),
       users: rank(d.users, v => v.n || 0),
       groups: rank(d.groups),
       // 最近 7 天，缺的日期补 0，出图时画趋势条

@@ -3,14 +3,21 @@ import path from 'node:path'
 import _ from 'lodash'
 import { dataDir, logPrefix } from '../constants/path.js'
 
-/** 递归建目录 */
+/**
+ * 递归建目录。
+ *
+ * 用 `recursive: true` 而不是自己递归：目录已存在时它不抛，而
+ * 「existsSync 判一下再 mkdirSync」在并发下会撞 EEXIST
+ * （dataPath 每次调用都会走一遍，出图并发时是真会撞上的）。
+ */
 export function mkdirs (dirname) {
-  if (fs.existsSync(dirname)) return true
-  if (mkdirs(path.dirname(dirname))) {
-    fs.mkdirSync(dirname)
+  try {
+    fs.mkdirSync(dirname, { recursive: true })
     return true
+  } catch (err) {
+    logger.error(`${logPrefix} 创建目录失败 ${dirname}: ${err.message}`)
+    return false
   }
-  return false
 }
 
 /**

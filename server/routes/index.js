@@ -20,7 +20,9 @@ const MIME = {
 async function getIndexPage (req, res) {
   const file = path.join(WEB_DIR, 'index.html')
   if (!fs.existsSync(file)) {
-    res.writeHead(500, MIME['.html'])
+    // 第二个参数传字符串会被 Node 当成 statusMessage，Content-Type 根本没设上，
+    // 浏览器只好去猜编码 —— 这里的中文会显示成乱码
+    res.writeHead(500, { 'Content-Type': MIME['.html'] })
     res.end('<h1>页面模板缺失</h1>')
     return
   }
@@ -69,9 +71,17 @@ async function getData (req, res) {
  * （toWebData）和站内生成（postMake）都过滤了，图片这两条路原来只判了
  * `infos[key]` 存不存在 —— 知道 code 的人直接敲 URL 照样能看到预览图，
  * 拿它挡 NSFW 仓库就等于没挡。
+ *
+ * decodeURIComponent 要包起来：`/memes/thumb/%ZZ` 这种非法转义会抛 URIError，
+ * 冒到外层就是一条 500 加一条 error 日志，随手敲个坏 URL 就能刷日志。
  */
 function keyFromPath (urlObj) {
-  const key = decodeURIComponent(urlObj.pathname.split('/').pop() || '')
+  let key
+  try {
+    key = decodeURIComponent(urlObj.pathname.split('/').pop() || '')
+  } catch {
+    return ''
+  }
   if (!key || !MemeIndex.infos[key] || MemeIndex.isBlocked(key)) return ''
   return key
 }

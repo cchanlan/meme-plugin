@@ -154,10 +154,19 @@ function fail (res, status, msg) {
   res.end(JSON.stringify({ error: msg }))
 }
 
+/** URL 里的表情 code。非法百分号转义（`%ZZ`）会让 decodeURIComponent 抛，当成没这个表情 */
+function safeKey (urlObj) {
+  try {
+    return decodeURIComponent(urlObj.pathname.split('/').pop() || '')
+  } catch {
+    return ''
+  }
+}
+
 export async function postMake (req, res, urlObj) {
   if (!Config.get('enableWebMake')) return fail(res, 403, '站内生成已关闭')
 
-  const key = decodeURIComponent(urlObj.pathname.split('/').pop() || '')
+  const key = safeKey(urlObj)
   const info = MemeIndex.infos[key]
   if (!info || MemeIndex.isBlocked(key)) return fail(res, 404, '没有这个表情')
 
@@ -227,8 +236,15 @@ export async function postMake (req, res, urlObj) {
     res.end(result.buffer)
   } catch (err) {
     if (res.headersSent) return
-    logger.debug(`${logPrefix} 站内生成 ${key} 失败: ${err.message}`)
-    fail(res, err.status || 500, err.message || '生成失败')
+    // 自己抛的（体积超限带 status）文案本来就是给人看的；其余是意外异常，
+    // 只回一句固定话 —— 这个站公开无鉴权，err.message 里常带绝对路径和内网地址。
+    // 意外异常用 error 级别记：debug 在默认日志级别下根本不落盘，出了事查不到。
+    if (err.status) {
+      fail(res, err.status, String(err.message || '请求有问题').slice(0, 200))
+    } else {
+      logger.error(`${logPrefix} 站内生成 ${key} 异常: ${err.stack || err.message}`)
+      fail(res, 500, '生成失败了，稍后再试')
+    }
   } finally {
     running--
   }

@@ -106,7 +106,9 @@ export function syncMemeDirs () {
   }
 
   const line = `meme_dirs = [${final.map(d => JSON.stringify(d)).join(',')}]`
-  const next = text.replace(/^[ \t]*meme_dirs[ \t]*=[ \t]*\[[\s\S]*?\]/m, line)
+  // 用函数形式返回替换文本：字符串形式里 `$` 是特殊字符（`$&`、`$'`…），
+  // 路径里带 $ 的机器（reposDir 填成 /data/$user/repos 之类）会被替换成别的东西
+  const next = text.replace(/^[ \t]*meme_dirs[ \t]*=[ \t]*\[[\s\S]*?\]/m, () => line)
 
   try {
     // 改前留一份，写坏了还能还原

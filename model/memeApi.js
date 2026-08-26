@@ -52,6 +52,11 @@ function apiError (status, text) {
   detail = detail.trim()
   if (!detail) return `服务端拒绝了这次生成（HTTP ${status}）`
 
+  // 服务端说没这个表情：本地索引比服务端旧了（对方更新时删掉/改名了这个表情），
+  // 而列表和 Web 站照旧显示着它，用户只会看到一句英文 Not Found 摸不着头脑
+  if (status === 404 || /^not found$/i.test(detail)) {
+    return '服务端没有这个表情，本地索引可能过期了 —— 发 #meme刷新 同步一下'
+  }
   if (/cannot identify image file|图片加载失败/.test(detail)) {
     return '有张图片读不出来 😵 可能不是图片、下载不完整或者格式太偏门，换一张再试'
   }
@@ -65,14 +70,37 @@ function apiError (status, text) {
   return clean.length > 160 ? `${clean.slice(0, 160)}…` : clean
 }
 
-/** 带超时的 fetch */
-async function request (path, options = {}) {
+/**
+ * 带超时的请求。
+ *
+ * body 也必须在同一个超时窗口里读完，所以由这里统一读掉，不把 Response 交出去：
+ * 原来 `clearTimeout` 一到手就执行，只管住了「响应头多久到」——
+ * 服务端把头发回来、body 传一半卡住（跨公网连远端服务、服务正在被 kill
+ * 都会这样）就再也没人管了。生成表情那条路上没有第二道超时，
+ * 会一路挂到长任务锁 20 分钟过期为止，期间 `#meme更新` 之类全被挡着。
+ * AbortController 的 signal 对 undici 的 body 流同样生效，所以不清定时器就够了。
+ *
+ * @param {string} path
+ * @param {{read?: 'none'|'json'|'buffer', method?: string, body?: any}} options
+ *        read 只在 res.ok 时生效；失败时一律读成文本放进 errText
+ * @returns {Promise<{res: Response, data?: any, errText: string}>}
+ */
+async function request (path, { read = 'none', ...options } = {}) {
   const url = Config.getApiUrl() + path
   const timeout = Config.get('apiTimeout') || 30000
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), timeout)
   try {
-    return await fetch(url, { ...options, signal: ctrl.signal })
+    const res = await fetch(url, { ...options, signal: ctrl.signal })
+    if (!res.ok) {
+      // 报错响应一律读掉：留着不读会把这条连接一直占着不还给连接池
+      return { res, errText: await res.text().catch(() => '') }
+    }
+    let data
+    if (read === 'json') data = await res.json()
+    else if (read === 'buffer') data = Buffer.from(await res.arrayBuffer())
+    else await res.body?.cancel().catch(() => {})
+    return { res, data, errText: '' }
   } catch (err) {
     throw netError(err)
   } finally {
@@ -84,8 +112,8 @@ const MemeApi = {
   /** 服务是否可用 */
   async ping () {
     try {
-      const r = await request('/memes/keys')
-      return r.ok
+      const { res } = await request('/memes/keys')
+      return res.ok
     } catch {
       return false
     }
@@ -94,10 +122,9 @@ const MemeApi = {
   /** 当前注册的表情数；服务没起来或响应异常返回 -1 */
   async countKeys () {
     try {
-      const r = await request('/memes/keys')
-      if (!r.ok) return -1
-      const list = await r.json()
-      return Array.isArray(list) ? list.length : -1
+      const { res, data } = await request('/memes/keys', { read: 'json' })
+      if (!res.ok) return -1
+      return Array.isArray(data) ? data.length : -1
     } catch {
       return -1
     }
@@ -133,22 +160,22 @@ const MemeApi = {
 
   /** 全部表情 key */
   async getKeys () {
-    const r = await request('/memes/keys')
-    if (!r.ok) {
+    const { res, data } = await request('/memes/keys', { read: 'json' })
+    if (!res.ok) {
       // 404 基本都是地址填错：这个路径 meme-generator 一定有，
       // 反代到了别的站（最常见是填成本插件自己的 Web 预览站）才会 404
-      const hint = r.status === 404
+      const hint = res.status === 404
         ? `\n（${Config.getApiUrl()} 上没有 /memes/keys，这地址多半不是 meme-generator 服务本体，别填成 Web 预览站的地址）`
         : ''
-      throw new Error(`获取表情列表失败: HTTP ${r.status}${hint}`)
+      throw new Error(`获取表情列表失败: HTTP ${res.status}${hint}`)
     }
-    return r.json()
+    return data
   },
 
   async getInfo (key) {
-    const r = await request(`/memes/${key}/info`)
-    if (!r.ok) throw new Error(`获取 ${key} 信息失败: HTTP ${r.status}`)
-    return r.json()
+    const { res, data } = await request(`/memes/${encodeURIComponent(key)}/info`, { read: 'json' })
+    if (!res.ok) throw new Error(`获取 ${key} 信息失败: HTTP ${res.status}`)
+    return data
   },
 
   /**
@@ -189,11 +216,11 @@ const MemeApi = {
 
   /** 表情的官方预览图 */
   async getPreview (key) {
-    const r = await request(`/memes/${key}/preview`)
-    if (!r.ok) throw new Error(`获取 ${key} 预览图失败: HTTP ${r.status}`)
+    const { res, data } = await request(`/memes/${encodeURIComponent(key)}/preview`, { read: 'buffer' })
+    if (!res.ok) throw new Error(`获取 ${key} 预览图失败: HTTP ${res.status}`)
     return {
-      buffer: Buffer.from(await r.arrayBuffer()),
-      contentType: r.headers.get('Content-Type') || 'image/png'
+      buffer: data,
+      contentType: res.headers.get('Content-Type') || 'image/png'
     }
   },
 
@@ -202,17 +229,20 @@ const MemeApi = {
    * @returns {Promise<{ok: boolean, buffer?: Buffer, contentType?: string, error?: string}>}
    */
   async generate (key, formData) {
-    const r = await request(`/memes/${key}/`, { method: 'POST', body: formData })
-    if (!r.ok) {
-      const raw = await r.text().catch(() => '')
+    const { res, data, errText } = await request(`/memes/${encodeURIComponent(key)}/`, {
+      method: 'POST',
+      body: formData,
+      read: 'buffer'
+    })
+    if (!res.ok) {
       // 原文只进日志：排查时要看得到 pydantic 说了什么，但别发到群里
-      logger.debug(`${logPrefix} 生成 ${key} 被服务端拒绝 HTTP ${r.status}: ${raw.slice(0, 500)}`)
-      return { ok: false, error: apiError(r.status, raw) }
+      logger.debug(`${logPrefix} 生成 ${key} 被服务端拒绝 HTTP ${res.status}: ${errText.slice(0, 500)}`)
+      return { ok: false, error: apiError(res.status, errText) }
     }
     return {
       ok: true,
-      buffer: Buffer.from(await r.arrayBuffer()),
-      contentType: r.headers.get('Content-Type') || 'image/gif'
+      buffer: data,
+      contentType: res.headers.get('Content-Type') || 'image/gif'
     }
   }
 }
