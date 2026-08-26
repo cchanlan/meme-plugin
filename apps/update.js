@@ -1,6 +1,5 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { execSync } from 'node:child_process'
 import Config from '../model/config.js'
 import MemeApi from '../model/memeApi.js'
 import MemeIndex from '../model/memeIndex.js'
@@ -10,6 +9,8 @@ import { mkdirs } from '../utils/file.js'
 import { syncMemeDirs, reposRoot } from '../utils/memeDirs.js'
 import { clearImageCaches } from '../utils/cleanup.js'
 import { pm2 } from '../utils/pm2.js'
+import { git } from '../utils/git.js'
+import { beginTask, endTask, busyTip } from '../utils/lock.js'
 
 /**
  * 单个仓库的路径。
@@ -30,12 +31,12 @@ export class memeUpdate extends plugin {
       rule: [
         {
           reg: '^#?meme更新$',
-          fnc: 'update',
+          fnc: 'updateEntry',
           permission: 'master'
         },
         {
           reg: '^#?meme(重载|刷新)$',
-          fnc: 'reloadOnly',
+          fnc: 'reloadEntry',
           permission: 'master'
         },
         {
@@ -58,6 +59,34 @@ export class memeUpdate extends plugin {
       '下次访问会重新回源，Web 站首屏会慢一点'
     )
     return true
+  }
+
+  /**
+   * 指令入口。update 和 reloadOnly 本体不上锁（update 内部会复用 reloadOnly，
+   * 上在本体里会撞自己的锁），锁统一加在入口这一层。
+   */
+  async updateEntry (e) {
+    if (!beginTask('更新表情')) {
+      await e.reply(busyTip('更新表情'))
+      return true
+    }
+    try {
+      return await this.update(e)
+    } finally {
+      endTask()
+    }
+  }
+
+  async reloadEntry (e) {
+    if (!beginTask('刷新索引')) {
+      await e.reply(busyTip('刷新索引'))
+      return true
+    }
+    try {
+      return await this.reloadOnly(e)
+    } finally {
+      endTask()
+    }
   }
 
   /** 只刷新索引，不动仓库（服务端已经是新的时候用这个更快） */
@@ -125,44 +154,43 @@ export class memeUpdate extends plugin {
         // 仓库不存在就克隆
         if (!fs.existsSync(path.join(repoPath, '.git'))) {
           const url = Config.proxyUrl(repo.url)
-          execSync(`git clone --depth 1 -b ${repo.branch || 'main'} "${url}" "${repoPath}"`, {
-            encoding: 'utf-8',
-            timeout: 600000
-          })
+          const c = await git(
+            ['clone', '--depth', '1', '-b', String(repo.branch || 'main'), url, repoPath],
+            { timeout: 600000 }
+          )
+          if (!c.ok) throw new Error(c.fatal || c.err || c.out || 'git clone 失败')
           msgs.push(`📥 ${repo.name} 首次克隆完成`)
           hasUpdates = true
           continue
         }
 
-        const oldHead = execSync('git rev-parse HEAD', { cwd: repoPath, encoding: 'utf-8' }).trim()
-        execSync('git pull', { cwd: repoPath, encoding: 'utf-8', timeout: 600000 })
-        const newHead = execSync('git rev-parse HEAD', { cwd: repoPath, encoding: 'utf-8' }).trim()
+        const oldHead = await git(['rev-parse', 'HEAD'], { cwd: repoPath, timeout: 15000 })
+        const pull = await git(['pull'], { cwd: repoPath, timeout: 600000 })
+        if (!pull.ok) throw new Error(pull.fatal || pull.err || pull.out || 'git pull 失败')
+        const newHead = await git(['rev-parse', 'HEAD'], { cwd: repoPath, timeout: 15000 })
 
-        if (oldHead === newHead) {
+        if (oldHead.out && oldHead.out === newHead.out) {
           // 没更新的攒起来一句话带过，不逐个报
           noChange.push(repo.name)
           continue
         }
 
         hasUpdates = true
-        const diffFiles = execSync(`git diff --name-only ${oldHead} ${newHead}`, {
-          cwd: repoPath,
-          encoding: 'utf-8'
-        }).trim().split('\n').filter(Boolean)
-        const commitLogs = execSync(
-          `git log --pretty=format:"%s" ${oldHead}..${newHead}`,
-          { cwd: repoPath, encoding: 'utf-8' }
-        ).trim()
+        const [diff, logs] = await Promise.all([
+          git(['diff', '--name-only', `${oldHead.out}..${newHead.out}`], { cwd: repoPath, timeout: 30000 }),
+          git(['log', '--pretty=format:%s', `${oldHead.out}..${newHead.out}`], { cwd: repoPath, timeout: 30000 })
+        ])
+        const diffFiles = diff.out.split('\n').filter(Boolean)
 
         msgs.push(`✅ ${repo.name}：${diffFiles.length} 个文件`)
-        if (commitLogs) {
-          const first = commitLogs.split('\n')[0]
+        if (logs.out) {
+          const first = logs.out.split('\n')[0]
           msgs.push(`   ${first.length > 60 ? first.slice(0, 60) + '…' : first}`)
         }
       } catch (err) {
         let errMsg = `❌ ${repo.name} 失败：`
         if (err.message.includes('not a git repository')) errMsg += '目录不是 git 仓库'
-        else if (err.message.includes('Could not resolve host')) errMsg += '网络不通，检查 gitProxy'
+        else if (/Could not resolve host|Failed to connect/i.test(err.message)) errMsg += '网络不通，检查 gitProxy'
         else if (err.message.includes('Authentication failed')) errMsg += '认证失败'
         else errMsg += err.message.split('\n')[0].slice(0, 60)
         msgs.push(errMsg)

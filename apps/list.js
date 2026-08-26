@@ -161,9 +161,15 @@ export class memeList extends plugin {
 
   async randomMeme (e) {
     if (blocked(e)) return false
+    // 索引空了（多半是刚卸载完服务）也要给 emptyIndexTip 那两条出路：
+    // 「请先发 #meme更新」在这种情况下只会再撞一次连不上
+    if (MemeIndex.isEmpty) {
+      await e.reply(emptyIndexTip())
+      return true
+    }
     const candidates = MemeIndex.randomCandidates()
     if (candidates.length === 0) {
-      await e.reply('没有可用的随机表情，请先发 #meme更新')
+      await e.reply('索引里没有「只要一张图、不用配文字」的表情，随机不出来~\n发 #meme列表 挑一个吧')
       return true
     }
     const code = candidates[_.random(0, candidates.length - 1, false)]

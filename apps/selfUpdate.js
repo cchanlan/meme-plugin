@@ -1,36 +1,17 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { execFile } from 'node:child_process'
 import { pluginPath, logPrefix } from '../constants/path.js'
+import { git as runGit } from '../utils/git.js'
 
 /**
  * 插件自身的更新（区别于 #meme更新 —— 那个更新的是表情资源仓库）。
  *
- * 全程用 execFile 而不是 execSync + 字符串命令：
- * ① 不走 shell，Windows 上没 bash 也一样跑；
- * ② 路径含空格（`C:\Program Files\...`）不用自己拼引号；
- * ③ git 卡在认证提示上时能被 timeout 掐掉，而不是把事件循环挂死。
+ * git 调用统一走 utils/git.js（execFile + 参数数组 + 超时），
+ * 不用 execSync：路径含空格不用自己拼引号，卡在认证提示上也能被掐掉，
+ * 更重要的是不会把事件循环挂死。
  */
 
-// GIT_TERMINAL_PROMPT=0：私有库/凭证过期时 git 会弹交互式账号密码提示，
-// 非 tty 下就是永久挂住，直到 timeout。设了它直接失败返回。
-// LC_ALL=C：把「Already up to date.」钉成英文，省得跟着系统语言变
-const GIT_ENV = { ...process.env, GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' }
-
-function git (args, timeout = 120000) {
-  return new Promise(resolve => {
-    execFile(
-      'git', ['-C', pluginPath, ...args],
-      { env: GIT_ENV, timeout, encoding: 'utf-8', windowsHide: true, maxBuffer: 10 * 1024 * 1024 },
-      (err, stdout, stderr) => resolve({
-        ok: !err,
-        out: String(stdout || '').trim(),
-        err: String(stderr || '').trim(),
-        fatal: err?.code === 'ENOENT' ? '找不到 git，先装一个：https://git-scm.com/downloads' : ''
-      })
-    )
-  })
-}
+const git = (args, timeout = 120000) => runGit(args, { cwd: pluginPath, timeout })
 
 /** 当前 HEAD 的短 hash + 提交时间 */
 async function head () {

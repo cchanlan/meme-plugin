@@ -31,10 +31,50 @@ chokidar.watch(userFile).on('change', () => {
   logger.mark(`${logPrefix} 配置文件变更，已重载`)
 })
 
+/**
+ * 只改用户配置里的一个键。
+ *
+ * 走 Document API 而不是「parse → 改对象 → stringify」：后者会把 yaml 里的
+ * **注释全部抹掉**。默认配置带 68 行说明（每个字段是干什么的、单位是什么），
+ * 复制给用户之后只要触发过一次写入（`#meme开关`、部署成功回写地址都会），
+ * 用户手上那份就变成一堆没有任何解释的裸键值，想手改配置只能回去翻文档。
+ */
+function writeUserValue (key, value) {
+  try {
+    const doc = YAML.parseDocument(fs.readFileSync(userFile, 'utf8'))
+    doc.set(key, value)
+    fs.writeFileSync(userFile, String(doc), 'utf-8')
+    return true
+  } catch (err) {
+    logger.error(`${logPrefix} 写配置失败（已回退成整体覆盖）${key}: ${err.message}`)
+    return false
+  }
+}
+
+/**
+ * 默认值 + 用户值。
+ *
+ * 用户侧的 `null` 要跳过，不能直接 `{...def, ...user}` 覆盖过去：
+ * yaml 里把一项写成 `webPort:`（后面空着）、或者面板上把输入框清空再保存，
+ * 解析出来就是 `null`，浅展开会把默认值顶掉。调用方大多写了 `|| 默认值` 兜着，
+ * 但 `replyWithQuote`、`serviceMode`、`memePm2Name` 这些没兜 ——
+ * 表现是「配置里明明有这一项，行为却像没配」，很难查。
+ *
+ * 空串不算：`gitProxy: ''`、`reposDir: ''` 是「我就是要留空」的明确表达。
+ */
+function merge (def, user) {
+  const out = { ...def }
+  for (const [k, v] of Object.entries(user)) {
+    if (v === null || v === undefined) continue
+    out[k] = v
+  }
+  return out
+}
+
 const Config = {
   /** 默认值与用户值合并后的完整配置 */
   getAll () {
-    if (!cache) cache = { ...readYaml(defaultFile), ...readYaml(userFile) }
+    if (!cache) cache = merge(readYaml(defaultFile), readYaml(userFile))
     return cache
   },
 
@@ -43,9 +83,11 @@ const Config = {
   },
 
   set (key, value) {
-    const user = readYaml(userFile)
-    user[key] = value
-    writeYaml(userFile, user)
+    if (!writeUserValue(key, value)) {
+      const user = readYaml(userFile)
+      user[key] = value
+      writeYaml(userFile, user)
+    }
     cache = null
   },
 

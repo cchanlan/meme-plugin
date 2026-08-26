@@ -16,9 +16,10 @@ import { mkdirs } from '../utils/file.js'
 
 const FILE = () => path.join(dataDir, 'stats.json')
 
-/** days 只留最近 30 天、users 上限 1000，防止文件无限长 */
+/** days 只留最近 30 天、users 上限 1000、groups 上限 500，防止文件无限长 */
 const KEEP_DAYS = 30
 const MAX_USERS = 1000
+const MAX_GROUPS = 500
 
 let data = null
 let timer = null
@@ -71,11 +72,33 @@ function flush () {
     for (const d of days) kept[d] = data.days[d]
     data.days = kept
     data.users = trimObj(data.users, MAX_USERS, u => u.n || 0)
+    // 群也要裁：进了上千个群的 bot，这个对象会跟群数一起长，而榜单只取前 10
+    data.groups = trimObj(data.groups, MAX_GROUPS)
     mkdirs(dataDir)
     fs.writeFileSync(FILE(), JSON.stringify(data), 'utf-8')
   } catch (err) {
     logger.error(`${logPrefix} 写入统计失败: ${err.message}`)
   }
+}
+
+/**
+ * 退出前补一次写盘。
+ *
+ * 防抖窗口是 5 秒，而 `#meme插件更新` 之后紧跟着重启 Yunzai —— 刚出的那几张
+ * 表情正好落在窗口里，重启一次就少几次计数。exit 钩子里只能跑同步 IO，
+ * flush 本身就是 writeFileSync，正好合用。
+ *
+ * 挂在 global 上判重：apps 热更会重新 import 本模块，不判会一路叠加监听器，
+ * Node 到 11 个就开始刷 MaxListenersExceededWarning。
+ */
+if (!global.memePluginStatsExitHook) {
+  global.memePluginStatsExitHook = true
+  process.once('exit', () => {
+    if (timer) {
+      clearTimeout(timer)
+      flush()
+    }
+  })
 }
 
 const Stats = {

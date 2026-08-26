@@ -25,6 +25,46 @@ function netError (err) {
   return err
 }
 
+/**
+ * 服务端拒绝生成时，把 JSON 报错翻成能发到群里的话。
+ *
+ * 原来是 `error: await r.text()`，用户看到的是整坨响应体：
+ *   {"detail":"图片加载失败（cannot identify image file <_io.BytesIO object at 0x7fa860…>）"}
+ * 参数类型不对时更长 —— pydantic 会连校验器名字和文档链接一起吐出来：
+ *   {"detail":"参数模型验证失败（1 validation error for Model\ncircle\n  Input should be
+ *    a valid boolean … https://errors.pydantic.dev/2.12/v/bool_parsing）"}
+ * 群里刷这么一段，主人既看不出是自己参数写错了，还以为插件崩了。
+ *
+ * detail 里「图片数量不符」「文本数量不符」这类本来就是中文人话，保留原文；
+ * 只把带 Python 内部细节的两类收拾干净。
+ */
+function apiError (status, text) {
+  let detail = ''
+  try {
+    const j = JSON.parse(text)
+    // 422 的 detail 是 [{loc, msg, type}]，其余是字符串
+    detail = Array.isArray(j?.detail)
+      ? j.detail.map(d => d?.msg || '').filter(Boolean).join('；')
+      : String(j?.detail ?? j?.message ?? '')
+  } catch {
+    detail = String(text || '')
+  }
+  detail = detail.trim()
+  if (!detail) return `服务端拒绝了这次生成（HTTP ${status}）`
+
+  if (/cannot identify image file|图片加载失败/.test(detail)) {
+    return '有张图片读不出来 😵 可能不是图片、下载不完整或者格式太偏门，换一张再试'
+  }
+  if (/validation error|参数模型验证失败/.test(detail)) {
+    // pydantic 的第一行是「N validation error for Model」，字段名在第二行
+    const field = detail.split('\n').map(s => s.trim()).find(s => /^\w+$/.test(s))
+    return `参数不对${field ? `（${field}）` : ''}，发「表情名详情」看这个表情支持哪些参数`
+  }
+  // 兜底：去掉 Python 对象地址这类噪音，再截断 —— 群消息不该甩一屏 traceback
+  const clean = detail.replace(/<[\w.]+ object at 0x[0-9a-f]+>/gi, '（内部对象）').replace(/\s*\n\s*/g, ' ')
+  return clean.length > 160 ? `${clean.slice(0, 160)}…` : clean
+}
+
 /** 带超时的 fetch */
 async function request (path, options = {}) {
   const url = Config.getApiUrl() + path
@@ -164,7 +204,10 @@ const MemeApi = {
   async generate (key, formData) {
     const r = await request(`/memes/${key}/`, { method: 'POST', body: formData })
     if (!r.ok) {
-      return { ok: false, error: await r.text() }
+      const raw = await r.text().catch(() => '')
+      // 原文只进日志：排查时要看得到 pydantic 说了什么，但别发到群里
+      logger.debug(`${logPrefix} 生成 ${key} 被服务端拒绝 HTTP ${r.status}: ${raw.slice(0, 500)}`)
+      return { ok: false, error: apiError(r.status, raw) }
     }
     return {
       ok: true,

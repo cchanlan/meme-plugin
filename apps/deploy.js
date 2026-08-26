@@ -7,6 +7,7 @@ import MemeIndex from '../model/memeIndex.js'
 import { dataDir, pluginResources, logPrefix } from '../constants/path.js'
 import { encodedCommandArgv, cleanPsError, looksBlocked } from '../utils/psShell.js'
 import { pm2Bin, pm2Proc, resetPm2Cache } from '../utils/pm2.js'
+import { beginTask, endTask, busyTip } from '../utils/lock.js'
 
 const IS_WIN = process.platform === 'win32'
 
@@ -166,6 +167,19 @@ export class memeDeploy extends plugin {
   }
 
   async deploy (e) {
+    // 部署要跑十几分钟，连点两下会有两个脚本抢同一个 venv 目录和同一个 pm2 名字
+    if (!beginTask('部署服务')) {
+      await e.reply(busyTip('部署'))
+      return true
+    }
+    try {
+      return await this.runDeploy(e)
+    } finally {
+      endTask()
+    }
+  }
+
+  async runDeploy (e) {
     const pm2Name = Config.get('deployPm2Name') || 'meme-plugin'
     const port = Number(Config.get('deployPort')) || 2233
     const { file, cmd, argv, named } = deployCommand({

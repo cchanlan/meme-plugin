@@ -40,7 +40,8 @@ export function startWebServer () {
       logger.error(`${logPrefix} Web 服务异常: ${err.stack || err.message}`)
       if (!res.headersSent) {
         res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' })
-        res.end('Server Error: ' + err.message)
+        // 具体错误只进日志：这个站是公开无鉴权的，err.message 里常带绝对路径
+        res.end('Server Error')
       }
     }
   })

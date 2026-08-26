@@ -63,12 +63,26 @@ async function getData (req, res) {
 }
 
 /**
+ * 从 /memes/thumb/xxx、/memes/preview/xxx 里取表情 key。
+ *
+ * 拉黑的表情要一起挡掉：黑名单的语义是「屏蔽整个表情」，data.json 里
+ * （toWebData）和站内生成（postMake）都过滤了，图片这两条路原来只判了
+ * `infos[key]` 存不存在 —— 知道 code 的人直接敲 URL 照样能看到预览图，
+ * 拿它挡 NSFW 仓库就等于没挡。
+ */
+function keyFromPath (urlObj) {
+  const key = decodeURIComponent(urlObj.pathname.split('/').pop() || '')
+  if (!key || !MemeIndex.infos[key] || MemeIndex.isBlocked(key)) return ''
+  return key
+}
+
+/**
  * 缩略图（列表用）。原始预览图平均 281KB、最大 1.38MB，
  * 837 张合计约 230MB，手机加载原图会卡死，所以列表统一走压缩后的 webp。
  */
 async function getThumb (req, res, urlObj) {
-  const key = decodeURIComponent(urlObj.pathname.split('/').pop() || '')
-  if (!key || !MemeIndex.infos[key]) {
+  const key = keyFromPath(urlObj)
+  if (!key) {
     res.writeHead(404)
     res.end('Not Found')
     return
@@ -87,8 +101,8 @@ async function getThumb (req, res, urlObj) {
 
 /** 原图（详情弹层用） */
 async function getPreview (req, res, urlObj) {
-  const key = decodeURIComponent(urlObj.pathname.split('/').pop() || '')
-  if (!key || !MemeIndex.infos[key]) {
+  const key = keyFromPath(urlObj)
+  if (!key) {
     res.writeHead(404)
     res.end('Not Found')
     return

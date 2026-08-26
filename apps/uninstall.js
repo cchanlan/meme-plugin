@@ -8,6 +8,7 @@ import { dataDir, logPrefix } from '../constants/path.js'
 import { pm2, pm2Proc, pm2Bin, resetPm2Cache } from '../utils/pm2.js'
 import { tomlPath, reposRoot } from '../utils/memeDirs.js'
 import { clearImageCaches } from '../utils/cleanup.js'
+import { beginTask, endTask, busyTip } from '../utils/lock.js'
 
 /**
  * 一键卸载本机部署的 meme 服务（`#meme部署` 的反向操作）。
@@ -328,8 +329,19 @@ export class memeUninstall extends plugin {
       return true
     }
 
-    await e.reply('🗑 开始卸载，正在停进程、删目录…')
-    const { done, fail, freed } = this.doUninstall(plan, all)
+    // 卸载和部署/更新会动同一批东西，不能并行（连点两下会一边删 venv 一边重装）
+    if (!beginTask('卸载服务')) {
+      await e.reply(busyTip('卸载'))
+      return true
+    }
+    let result
+    try {
+      await e.reply('🗑 开始卸载，正在停进程、删目录…')
+      result = this.doUninstall(plan, all)
+    } finally {
+      endTask()
+    }
+    const { done, fail, freed } = result
 
     // 卸载完再探一次服务：还连得上（比如用户自己那套服务在跑、或 memeApiUrl 指着
     // 别的机器）就别清索引，表情照旧能用。连不上才清 —— 索引是第二层缓存，
