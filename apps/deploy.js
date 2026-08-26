@@ -5,25 +5,61 @@ import Config from '../model/config.js'
 import MemeApi from '../model/memeApi.js'
 import MemeIndex from '../model/memeIndex.js'
 import { dataDir, pluginResources, logPrefix } from '../constants/path.js'
+import { encodedCommandArgv, cleanPsError, looksBlocked } from '../utils/psShell.js'
 
 const IS_WIN = process.platform === 'win32'
+
+/**
+ * Windows 上优先用 pwsh（PowerShell 7）。
+ *
+ * 装了 Windows Terminal 的机器基本都有 pwsh，而系统自带的 powershell.exe 是 5.1：
+ * 它读 .ps1 时**不看 UTF-8 就按系统 ANSI(GBK) 解码**，本脚本满篇中文，
+ * 轻则提示乱码、重则把字符串解成半个字节序列。pwsh 7 默认 UTF-8，没这问题。
+ * 找不到 pwsh 才退回 powershell.exe（脚本已加 BOM，5.1 也能正确读中文）。
+ */
+function winShell () {
+  for (const exe of ['pwsh.exe', 'pwsh']) {
+    try {
+      execSync(`${exe} -NoProfile -Command "exit 0"`, { stdio: 'ignore', timeout: 15000 })
+      return exe
+    } catch {}
+  }
+  return 'powershell.exe'
+}
 
 /**
  * 部署脚本与解释器按平台分派。
  * Windows 上没有 bash（除非装了 Git Bash / WSL），所以另备一份 PowerShell 脚本，
  * 两边输出同一套 ::STEP:: / ::OK:: / ::FAIL:: 标记，解析逻辑可以共用。
+ *
+ * PowerShell 侧用**命名参数**而不是位置参数：`-File` 会把命令行上的空字符串
+ * 直接丢掉，gitProxy 留空这种常见情况会让后面所有参数整体前移一位
+ * （端口值挪到 GitProxy 上，[int]$Port 绑定失败 → 退出码 1 且一个字都不输出）。
+ * 命名参数按名字绑定，空值干脆不传、让脚本用默认值。
  */
-function deployCommand (args) {
+function deployCommand (opts) {
+  const { dataDir: dir, pm2Name, pipIndex, gitProxy, port } = opts
   if (IS_WIN) {
     const ps1 = path.join(pluginResources, 'deploy', 'deploy.ps1')
+    const named = ['-DataDir', dir, '-Pm2Name', pm2Name, '-Port', String(port)]
+    if (pipIndex) named.push('-PipIndex', pipIndex)
+    if (gitProxy) named.push('-GitProxy', gitProxy)
+    const cmd = winShell()
     return {
       file: ps1,
-      cmd: 'powershell.exe',
-      argv: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps1, ...args]
+      cmd,
+      argv: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps1, ...named],
+      named
     }
   }
+  // bash 侧是位置参数，空串照样占位，不会错位
   const sh = path.join(pluginResources, 'deploy', 'deploy.sh')
-  return { file: sh, cmd: 'bash', argv: [sh, ...args] }
+  return {
+    file: sh,
+    cmd: 'bash',
+    argv: [sh, dir, pm2Name, pipIndex, gitProxy, String(port)],
+    named: []
+  }
 }
 
 /** venv 里 meme 可执行文件的位置：Windows 放在 Scripts\ 且带 .exe */
@@ -116,13 +152,13 @@ export class memeDeploy extends plugin {
   async deploy (e) {
     const pm2Name = Config.get('deployPm2Name') || 'meme-plugin'
     const port = Number(Config.get('deployPort')) || 2233
-    const { file, cmd, argv } = deployCommand([
+    const { file, cmd, argv, named } = deployCommand({
       dataDir,
       pm2Name,
-      Config.get('pipIndexUrl') || '',
-      Config.get('gitProxy') || '',
-      String(port)
-    ])
+      pipIndex: Config.get('pipIndexUrl') || '',
+      gitProxy: Config.get('gitProxy') || '',
+      port
+    })
     if (!fs.existsSync(file)) {
       await e.reply(`❌ 部署脚本不存在：${file}`)
       return true
@@ -147,7 +183,20 @@ export class memeDeploy extends plugin {
       '首次部署要下载 skia-python 等依赖，可能要几分钟，请耐心等~'
     )
 
-    const result = await this.runScript(cmd, argv, e)
+    let result = await this.runScript(cmd, argv, e)
+
+    // Windows 上「一步都没跑起来」多半是 .ps1 被执行策略拦下（组策略下发时
+    // 命令行的 -ExecutionPolicy Bypass 无效）。改成把脚本正文内联执行再试一次，
+    // 这条路不算「运行脚本文件」，不受该策略管。
+    if (!result.ok && IS_WIN && !result.sawStep && looksBlocked(result.errLines)) {
+      const { b64, tooLong } = encodedCommandArgv(file, named)
+      if (!tooLong) {
+        await e.reply('⚠️ 直接跑 .ps1 被系统挡下了，换成内联方式重试一次...')
+        result = await this.runScript(
+          cmd, ['-NoProfile', '-NonInteractive', '-EncodedCommand', b64], e
+        )
+      }
+    }
 
     if (!result.ok) {
       await e.reply(`❌ 部署失败\n${result.messages.join('\n')}`)
@@ -193,6 +242,11 @@ export class memeDeploy extends plugin {
       const messages = []
       let failed = null
       let lastStep = ''
+      let sawStep = false
+      // stderr 只写日志的话，脚本还没跑起来就挂掉时用户只看到「退出码 1」，
+      // 什么线索都没有 —— 解释器自己的报错（找不到文件、参数绑定失败、
+      // 执行策略拦截）全在这里，必须能回给用户
+      const errLines = []
 
       const child = spawn(cmd, argv, {
         cwd: dataDir,
@@ -205,6 +259,7 @@ export class memeDeploy extends plugin {
           if (!line.trim()) continue
           if (line.startsWith('::STEP::')) {
             lastStep = line.slice(8)
+            sawStep = true
             logger.mark(`${logPrefix} 部署: ${lastStep}`)
             // 耗时步骤即时反馈，免得主人以为卡死了
             if (/安装 meme-generator|下载内置/.test(lastStep)) {
@@ -226,21 +281,44 @@ export class memeDeploy extends plugin {
 
       child.stdout.on('data', handle)
       child.stderr.on('data', chunk => {
-        logger.debug(`${logPrefix} 部署stderr: ${String(chunk).trim()}`)
+        const t = String(chunk).trim()
+        if (!t) return
+        logger.error(`${logPrefix} 部署stderr: ${t}`)
+        for (const line of t.split('\n')) {
+          if (line.trim()) errLines.push(line.trim())
+        }
       })
 
       child.on('error', err => {
-        resolve({ ok: false, messages: [...messages, `脚本执行异常：${err.message}`] })
+        // ENOENT 就是解释器本身没找到，报清楚是哪个
+        const extra = err.code === 'ENOENT' ? `（找不到 ${cmd}，它不在 PATH 里）` : ''
+        resolve({ ok: false, sawStep, errLines: [], messages: [...messages, `脚本执行异常：${err.message}${extra}`] })
       })
 
       child.on('close', code => {
+        const errs = cleanPsError(errLines)
         if (failed) {
-          resolve({ ok: false, messages: [...messages, `✗ ${failed}`] })
-        } else if (code !== 0) {
-          resolve({ ok: false, messages: [...messages, `脚本退出码 ${code}（卡在：${lastStep}）`] })
-        } else {
-          resolve({ ok: true, messages })
+          resolve({ ok: false, sawStep, errLines: errs, messages: [...messages, `✗ ${failed}`] })
+          return
         }
+        if (code === 0) {
+          resolve({ ok: true, sawStep, errLines: errs, messages })
+          return
+        }
+        const out = [...messages]
+        // 一个 ::STEP:: 都没有 = 脚本压根没开始跑，问题在解释器/脚本自身
+        out.push(sawStep
+          ? `脚本退出码 ${code}（卡在：${lastStep}）`
+          : `脚本退出码 ${code}，而且一步都没跑起来 —— 大概率是解释器或脚本本身的问题`)
+        if (!sawStep) out.push(`解释器：${cmd}`)
+        if (errs.length) {
+          out.push('报错原文：')
+          out.push(...errs.slice(-6).map(l => `  ${l}`))
+        } else if (!sawStep) {
+          out.push('（脚本连报错都没输出，手动跑一下看看：）')
+          out.push(`  ${cmd} ${argv.map(a => (/\s/.test(a) ? `"${a}"` : a)).join(' ')}`)
+        }
+        resolve({ ok: false, sawStep, errLines: errs, messages: out })
       })
     })
   }

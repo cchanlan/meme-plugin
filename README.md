@@ -82,6 +82,14 @@ Linux / macOS / Windows 都能跑，差异集中在路径和部署脚本上：
 
 > Windows 的 `deploy.ps1` 是逐步对照 `deploy.sh` 写的、输出同一套 `::STEP::` 标记，
 > 但**没有在真机上跑过**（开发机是 Linux）。Linux 路径已完整验证过一遍。
+>
+> Windows 侧做了三件适配：优先用 **pwsh（PowerShell 7）**，找不到才退回系统自带的
+> `powershell.exe`（5.1 读 .ps1 不认 UTF-8，所以脚本存成带 BOM 的）；参数走**命名参数**
+> 而不是位置参数（`-File` 会把命令行上的空字符串直接丢掉，`gitProxy` 留空就会让后面
+> 的参数整体前移、`[int]$Port` 绑定失败，表现是退出码 1 且一个字都不输出）；万一 .ps1
+> 被**组策略**下发的 ExecutionPolicy 拦下（这时命令行的 `-ExecutionPolicy Bypass` 是无效的），
+> 会自动改用 `-EncodedCommand` 把脚本正文内联执行重试一次。部署失败时脚本的 stderr
+> 会一起回给你（PowerShell 的 CLIXML 包装已还原成人话），不再只有一句退出码。
 
 ## 指令
 

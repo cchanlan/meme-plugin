@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 <#
   meme-generator 一键部署脚本（Windows / PowerShell 版）
 
@@ -18,6 +18,13 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
+
+# 输出编码钉成 UTF-8：Windows PowerShell 5.1 重定向到管道时默认走系统 ANSI(GBK)，
+# 调用方（Node）按 UTF-8 读，中文步骤名和报错就全是乱码。pwsh 7 本来就是 UTF-8，设了无害。
+try {
+  [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+  $OutputEncoding = [System.Text.Encoding]::UTF8
+} catch {}
 
 $VenvDir = Join-Path $DataDir 'venv'
 $ReposDir = Join-Path $DataDir 'repos'
