@@ -18,7 +18,16 @@ PORT="${5:-2233}"
 
 VENV_DIR="$DATA_DIR/venv"
 REPOS_DIR="$DATA_DIR/repos"
-CONFIG_DIR="$HOME/.config/meme_generator"
+# config.toml 的位置必须和 meme-generator（nonebot plugin-localstore）算出来的一致，
+# 写到别处就是白写：服务照旧读它自己那份，meme_dirs 永远登记不上、只剩内置表情。
+# 早先这里写死 $HOME/.config，两种机器上会写错地方 ——
+# 设过 XDG_CONFIG_HOME 的 Linux，以及 macOS（它用 ~/Library/Application Support）。
+# 插件 Node 侧 utils/memeDirs.js 的 tomlPath() 就是按这套规则找的，两边得对得上。
+if [ "$(uname -s)" = "Darwin" ]; then
+  CONFIG_DIR="$HOME/Library/Application Support/meme_generator"
+else
+  CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/meme_generator"
+fi
 CONFIG_FILE="$CONFIG_DIR/config.toml"
 
 # 订阅的表情仓库：目录名|git地址|分支|表情子目录

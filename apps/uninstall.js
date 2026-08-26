@@ -241,7 +241,12 @@ function renderPlan (plan, all) {
   }
 
   if (plan.material.exists) {
-    keep.push(`· 表情素材 ${plan.material.path}${sizeOf(plan.material.stat)}：不删（${IS_WIN ? 'Windows 上它和 config.toml 同一个目录' : '重装时还能省一次下载'}），要清自己删`)
+    // Windows 和 macOS 上 localstore 的 data dir 与 config dir 是同一个目录，
+    // 删素材会把 config.toml 一起带走 —— 所以三个平台统一只报告不删
+    const why = IS_WIN || process.platform === 'darwin'
+      ? '它和 config.toml 同一个目录'
+      : '重装时还能省一次下载'
+    keep.push(`· 表情素材 ${plan.material.path}${sizeOf(plan.material.stat)}：不删（${why}），要清自己删`)
   }
 
   return { del, keep }
