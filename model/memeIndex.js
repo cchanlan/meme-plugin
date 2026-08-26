@@ -91,7 +91,7 @@ const MemeIndex = {
   async refreshFromApi () {
     const oldKeyMap = { ...keyMap }
     const oldCount = Object.keys(infos).length
-    const { keyMap: newKeyMap, infos: newInfos } = await MemeApi.fetchAll()
+    const { keyMap: newKeyMap, infos: newInfos, failed = [] } = await MemeApi.fetchAll()
     const newCount = Object.keys(newInfos).length
     if (newCount === 0) {
       throw new Error('从服务端拉到 0 个表情，已保留原缓存')
@@ -111,7 +111,7 @@ const MemeIndex = {
     rebuildIndex()
     const added = Object.keys(keyMap).filter(k => !(k in oldKeyMap))
     logger.mark(`${logPrefix} 索引已刷新：${this.memeCount} 个表情 / ${this.keywordCount} 个关键词`)
-    return { count: this.memeCount, keywordCount: this.keywordCount, added }
+    return { count: this.memeCount, keywordCount: this.keywordCount, added, failed }
   },
 
   /**

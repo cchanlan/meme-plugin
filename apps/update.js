@@ -68,10 +68,21 @@ export class memeUpdate extends plugin {
       if (r.added.length) {
         msg += `\n🆕 新增 ${r.added.length} 个：${r.added.slice(0, 12).join('、')}${r.added.length > 12 ? ' …' : ''}`
         msg += '\n不用重启，直接发就能用~'
+      } else {
+        msg += '\n没有新表情，服务端和本地已经一致'
+      }
+      // 个别 info 没拉到时表情数会悄悄少一截，不说清楚只会被当成「服务缺表情」
+      if (r.failed.length) {
+        msg += `\n⚠️ 有 ${r.failed.length} 个没拉到（${r.failed.slice(0, 5).join('、')}${r.failed.length > 5 ? ' …' : ''}）`
+        msg += '\n多半是网络抖动，再发一次 #meme刷新 就好'
       }
       await e.reply(msg)
     } catch (err) {
-      await e.reply(`❌ 热加载失败：${err.message}`)
+      await e.reply(
+        `❌ 热加载失败：${err.message}\n` +
+        `当前服务地址：${Config.getApiUrl()}\n` +
+        '发 #meme部署状态 可以看连通性'
+      )
     }
     return true
   }
@@ -81,11 +92,14 @@ export class memeUpdate extends plugin {
     // 对它一点作用都没有：表情资源是服务方那边的事，这边把几个 G 的仓库拉下来
     // 也没有任何进程会去扫，纯占磁盘 + 被 clone 报错刷屏。所以直接退化成刷索引。
     if (!Config.isLocalService()) {
+      // 「正在刷」这句得并进这条里：刷索引要按表情逐个拉 info，连公网服务时
+      // 几百个表情要几十秒，中间一句话都没有的话用户只会以为指令没生效
       await e.reply(
         `ℹ️ 你连的是外部 meme 服务（${Config.getApiUrl()}）\n` +
         '表情资源由服务提供方维护，本机拉仓库、改 config.toml、重启进程都作用不到它身上，\n' +
         '所以这里只刷新本地索引（和 #meme刷新 一样）。\n' +
         '👉 服务方更新了表情，你发这个就能同步到\n\n' +
+        '⏳ 正在刷新索引，要按表情逐个问服务，几十秒左右，完了会再回一条\n\n' +
         '（如果 meme 服务其实就在这台机器上、想让插件接管资源，把配置 serviceMode 改成 local）'
       )
       return this.reloadOnly(e, true)
@@ -224,6 +238,9 @@ export class memeUpdate extends plugin {
         msgs.push('不用重启，现在直接发就能用~')
       } else {
         msgs.push('（关键词无变化）')
+      }
+      if (r.failed.length) {
+        msgs.push(`⚠️ 有 ${r.failed.length} 个没拉到 info，再发一次 #meme刷新 补上`)
       }
     } catch (err) {
       msgs.push(`⚠️ 索引热加载失败：${err.message}`)

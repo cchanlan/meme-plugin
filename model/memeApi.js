@@ -68,7 +68,14 @@ const MemeApi = {
   /** 全部表情 key */
   async getKeys () {
     const r = await request('/memes/keys')
-    if (!r.ok) throw new Error(`获取表情列表失败: HTTP ${r.status}`)
+    if (!r.ok) {
+      // 404 基本都是地址填错：这个路径 meme-generator 一定有，
+      // 反代到了别的站（最常见是填成本插件自己的 Web 预览站）才会 404
+      const hint = r.status === 404
+        ? `\n（${Config.getApiUrl()} 上没有 /memes/keys，这地址多半不是 meme-generator 服务本体，别填成 Web 预览站的地址）`
+        : ''
+      throw new Error(`获取表情列表失败: HTTP ${r.status}${hint}`)
+    }
     return r.json()
   },
 
@@ -82,29 +89,36 @@ const MemeApi = {
    * 拉取全部表情的 info。
    * 分批并发，837 个表情从约 9 秒压到 1 秒内。
    * 服务端没有 /memes/static/*.json（实测 404），只能逐个拉。
+   *
+   * 单个失败只记日志不中断（跨公网连服务时个别超时很正常），但要把
+   * 失败的 key 报给调用方 —— 不然表情数悄悄少一截，用户只会以为服务缺表情。
    */
   async fetchAll (batchSize = 20) {
     const keys = await this.getKeys()
     const keyMap = {}
     const infos = {}
+    const failed = []
     for (let i = 0; i < keys.length; i += batchSize) {
       const results = await Promise.all(keys.slice(i, i + batchSize).map(async key => {
         try {
           return [key, await this.getInfo(key)]
         } catch (err) {
           logger.error(`${logPrefix} 拉取 ${key} 的 info 失败: ${err.message}`)
-          return null
+          return [key, null]
         }
       }))
       for (const item of results) {
         if (!item) continue
         const [key, info] = item
-        if (!info?.keywords) continue
+        if (!info?.keywords) {
+          failed.push(key)
+          continue
+        }
         info.keywords.forEach(kw => { keyMap[kw] = key })
         infos[key] = info
       }
     }
-    return { keyMap, infos }
+    return { keyMap, infos, failed }
   },
 
   /** 表情的官方预览图 */
