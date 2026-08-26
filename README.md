@@ -92,6 +92,13 @@ Linux / macOS / Windows 都能跑，差异集中在路径和部署脚本上：
 > 被**组策略**下发的 ExecutionPolicy 拦下（这时命令行的 `-ExecutionPolicy Bypass` 是无效的），
 > 会自动改用 `-EncodedCommand` 把脚本正文内联执行重试一次。部署失败时脚本的 stderr
 > 会一起回给你（PowerShell 的 CLIXML 包装已还原成人话），不再只有一句退出码。
+>
+> 退回 5.1 时还有两处语义差异也已绕开：传给原生命令的参数里**双引号会被 5.1 吞掉**
+> （所以探 Python 版本的那行代码写成零引号的 `sep=chr(46)`，否则装着 3.11 也会报
+> 「需要 Python 3.9+」）；`Set-Content -Encoding UTF8` 在 5.1 下**带 BOM**，而
+> meme-generator 的 toml 库直接 `open()` 读，BOM 会让首行的 `#` 注释被当成 key 名
+> （`Found invalid character in key name: '#'`），服务一启动就抛异常、pm2 反复重启到
+> errored —— 所以 `config.toml` 改用 .NET 显式写成无 BOM。
 
 ## 指令
 

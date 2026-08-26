@@ -20,9 +20,17 @@ const IS_WIN = process.platform === 'win32'
 let cached
 let cachedResolved = false
 
-/** Windows 上 .cmd/.bat 必须经 shell 才能启动（Node 18.20+ 起直接 spawn 会被拒） */
+/**
+ * Windows 上除了 .exe 一律得经 shell：
+ * - `.cmd`/`.bat` 从 Node 18.20 起不能直接 spawn（会被拒）
+ * - **裸名字 `pm2` 也不行** —— CreateProcess 只认 .exe，不查 PATHEXT，
+ *   而 npm 全局包在 Windows 上是 `pm2.cmd`，于是 PATH 里明明有也报 ENOENT。
+ *   交给 cmd.exe 它才会按 PATHEXT 补后缀找到 .cmd。
+ *   顺带避开了 npm 那个 `pm2.ps1` 包装（.ps1 不在 PATHEXT 里，cmd 不会命中它，
+ *   而它用 $args 转发会吃掉参数终止符 `--`）。
+ */
 function needsShell (bin) {
-  return IS_WIN && /\.(cmd|bat)$/i.test(bin)
+  return IS_WIN && !/\.exe$/i.test(bin)
 }
 
 function quote (s) {

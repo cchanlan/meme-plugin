@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import zlib from 'node:zlib'
 
 /**
  * Windows / PowerShell 那一侧的三个小工具，从 apps/deploy.js 抽出来单独放，
@@ -20,7 +21,13 @@ export function psQuote (s) {
  * 顺带绕开 Windows PowerShell 5.1 按系统 ANSI 读 .ps1 的老毛病。
  *
  * 脚本正文包在 `& { ... }` 里，它自己的 param() 照常绑定命名参数。
- * 实测 6.8K 的脚本编码后约 18K 字符，命令行上限 32767，余量够。
+ *
+ * 正文**必须先 gzip**：脚本连注释一起 18K，`& {…}` 包好再 UTF-16LE + base64
+ * 就是 28.8K，而命令行总长上限只有 32767 —— 脚本再长 4K 这条兜底就自己失效了
+ * （tooLong 一置位就是静默放弃重试，用户只看到部署失败）。gzip 后实测降到 23.7K：
+ * 降幅只有 18%，因为大头是外层 UTF-16LE + base64 对 ASCII 的 2.67 倍膨胀，
+ * 但正文的可增长空间从 4K 涨到约 8K，够用了。
+ * 解压的引导代码用 `[IO.Compression.GZipStream]`（在 System.dll 里，5.1 也默认可用）。
  */
 export function encodedCommandArgv (ps1, named = []) {
   const body = fs.readFileSync(ps1, 'utf-8').replace(/^﻿/, '')
@@ -29,7 +36,13 @@ export function encodedCommandArgv (ps1, named = []) {
     args.push(named[i], psQuote(named[i + 1]))
   }
   const script = `& {\n${body}\n} ${args.join(' ')}`
-  const b64 = Buffer.from(script, 'utf16le').toString('base64')
+  // base64 的字符集里没有单引号，直接嵌进 PowerShell 单引号串是安全的
+  const gz = zlib.gzipSync(Buffer.from(script, 'utf-8'), { level: 9 }).toString('base64')
+  const loader = '$s=[IO.MemoryStream]::new([Convert]::FromBase64String(\'' + gz + '\'));' +
+    '$g=[IO.Compression.GZipStream]::new($s,[IO.Compression.CompressionMode]::Decompress);' +
+    '$r=[IO.StreamReader]::new($g,[Text.Encoding]::UTF8);$c=$r.ReadToEnd();$r.Dispose();' +
+    'Invoke-Expression $c'
+  const b64 = Buffer.from(loader, 'utf16le').toString('base64')
   return { b64, tooLong: b64.length > 30000 }
 }
 
