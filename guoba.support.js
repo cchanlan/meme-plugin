@@ -39,6 +39,19 @@ export function supportGuoba () {
           componentProps: { min: 5000, max: 120000 }
         },
         {
+          field: 'serviceMode',
+          label: '服务归属',
+          bottomHelpMessage: '决定 #meme更新 要不要拉表情仓库。用别人的服务时拉仓库毫无意义——本机没有 meme-generator 去扫它，白占几个 G。auto 按服务地址自动判断（回环地址算本机），够用；服务跑在本机 docker 里（仓库在容器内）选「外部服务」',
+          component: 'Select',
+          componentProps: {
+            options: [
+              { label: '自动判断（推荐）', value: 'auto' },
+              { label: '本机服务：更新时拉仓库+重启进程', value: 'local' },
+              { label: '外部服务：更新时只刷索引', value: 'remote' }
+            ]
+          }
+        },
+        {
           component: 'Divider',
           label: '触发方式'
         },

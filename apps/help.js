@@ -27,6 +27,8 @@ export class memeHelp extends plugin {
     const web = Config.get('enableWeb') ? `${Config.getWebUrl()}/memes` : null
     // 在线生成是 Web 站里的功能，站关了就无从提起
     const canMake = !!(web && Config.get('enableWebMake'))
+    // 用外部服务时「拉表情仓库」「本机部署」这两件事都不成立，帮助里别乱指路
+    const local = Config.isLocalService()
 
     let loc = null
     try {
@@ -34,7 +36,8 @@ export class memeHelp extends plugin {
         total: MemeIndex.memeCount,
         keywords: MemeIndex.keywordCount,
         web,
-        canMake
+        canMake,
+        local
       })
     } catch (err) {
       logger.error(`${logPrefix} 帮助图渲染失败：${err.message}`)
@@ -58,11 +61,11 @@ export class memeHelp extends plugin {
     }
 
     // 出图失败（缺 puppeteer / 内存不足）时退回纯文字，功能不受影响
-    await e.reply(this.textHelp(web, canMake))
+    await e.reply(this.textHelp(web, canMake, local))
     return true
   }
 
-  textHelp (web, canMake = false) {
+  textHelp (web, canMake = false, local = true) {
     const lines = [
       '🌸 表情包使用说明',
       '',
@@ -93,12 +96,14 @@ export class memeHelp extends plugin {
     lines.push('  #meme开启 / #meme关闭 —— 本群开关（群管或主人）')
     lines.push('  #meme开关 —— 看本群当前状态')
     lines.push('  以下仅主人：')
-    lines.push('  #meme更新 —— 拉取新表情（会自动重启服务+刷新索引）')
+    lines.push(local
+      ? '  #meme更新 —— 拉取新表情（会自动重启服务+刷新索引）'
+      : '  #meme更新 —— 同步服务方的新表情（外部服务，只刷索引）')
     lines.push('  #meme刷新 —— 只重建索引，不动仓库')
     lines.push('  #meme部署状态 —— 查看服务健康度')
     lines.push('  #meme清缓存 —— 清空预览图/缩略图缓存')
     lines.push('  #meme清空统计 —— 排行榜清零重来')
-    lines.push('  #meme部署 —— 可选：在本机装一套 meme 服务')
+    if (local) lines.push('  #meme部署 —— 可选：在本机装一套 meme 服务')
     return lines.join('\n')
   }
 }

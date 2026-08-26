@@ -3,6 +3,12 @@
 memeApiUrl: "http://127.0.0.1:2233"
 # 单次请求超时（毫秒）
 apiTimeout: 30000
+# 这套 meme 服务是不是「本机的、插件管得着的」，决定 #meme更新 要不要拉表情仓库。
+#   auto   —— 按 memeApiUrl 判断，回环地址算本机（默认，够用）
+#   remote —— 强制当外部服务：#meme更新 只刷索引，不拉仓库、不改 config.toml、不重启进程
+#   local  —— 强制当本机服务：走完整更新流程
+# 用别人的服务地址时保持 auto 就行；服务跑在本机 docker 里（仓库在容器内）要设 remote
+serviceMode: auto
 
 # ===== 触发方式 =====
 # 是否强制要求 # 前缀。false 则「摸头」也能触发，容易误触发，建议保持 true

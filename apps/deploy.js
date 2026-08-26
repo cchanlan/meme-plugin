@@ -74,7 +74,12 @@ export class memeDeploy extends plugin {
     }
     lines.push(`${MemeIndex.isEmpty ? '❌' : '✅'} 本地索引：${MemeIndex.memeCount} 个表情 / ${MemeIndex.keywordCount} 个关键词`)
 
-    lines.push('\n── 本机部署情况 ──')
+    // 用外部服务时，下面这三项本来就不该有东西 —— 标题里说清楚，
+    // 免得看到「资源仓库 0/5」以为是坏了跑去 #meme更新 拉一堆没用的仓库
+    const local = Config.isLocalService()
+    lines.push(local
+      ? '\n── 本机部署情况 ──'
+      : '\n── 本机部署情况（你用的是外部服务，这几项空着是正常的）──')
     lines.push(`${fs.existsSync(venvBin) ? '✅' : '⬜'} venv：${fs.existsSync(venvBin) ? '已安装' : '未部署'}`)
 
     let repoCount = 0
@@ -96,8 +101,12 @@ export class memeDeploy extends plugin {
     if (!alive) {
       lines.push('\n💡 服务连不上。要么改配置 memeApiUrl 指向现成服务，')
       lines.push('   要么发 #meme部署 在本机装一个（可选）')
+    } else if (!local) {
+      lines.push('\n💡 你在用外部 meme 服务，不需要本机部署，也不用拉表情仓库')
+      lines.push('   服务方更新了表情，发 #meme更新 会自动同步索引')
     } else if (!fs.existsSync(venvBin)) {
-      lines.push('\n💡 你在用外部 meme 服务，不需要本机部署')
+      lines.push('\n💡 服务在本机但不是插件部署的，#meme更新 会拉仓库并按')
+      lines.push(`   memePm2Name「${Config.get('memePm2Name')}」重启它`)
     }
 
     await e.reply(lines.join('\n'))
@@ -150,6 +159,8 @@ export class memeDeploy extends plugin {
     Config.set('memePm2Name', pm2Name)
     // 新服务监听的是 deployPort，不指过去插件还在连原来那个地址
     Config.set('memeApiUrl', `http://127.0.0.1:${port}`)
+    // 之前连的是别人的服务、手动设过 remote 的话要掰回来，否则 #meme更新 不拉仓库
+    Config.set('serviceMode', 'local')
 
     const msgs = [`✅ 部署完成！\n${result.messages.join('\n')}`]
 

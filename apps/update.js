@@ -59,8 +59,8 @@ export class memeUpdate extends plugin {
   }
 
   /** 只刷新索引，不动仓库（服务端已经是新的时候用这个更快） */
-  async reloadOnly (e) {
-    await e.reply('正在热加载表情索引...')
+  async reloadOnly (e, quiet = false) {
+    if (!quiet) await e.reply('正在热加载表情索引...')
     try {
       const r = await MemeIndex.refreshFromApi()
       clearImageCaches()
@@ -77,6 +77,20 @@ export class memeUpdate extends plugin {
   }
 
   async update (e) {
+    // 服务不在本机的话，这条指令后面那一整套（拉仓库 → 写 meme_dirs → 重启 pm2）
+    // 对它一点作用都没有：表情资源是服务方那边的事，这边把几个 G 的仓库拉下来
+    // 也没有任何进程会去扫，纯占磁盘 + 被 clone 报错刷屏。所以直接退化成刷索引。
+    if (!Config.isLocalService()) {
+      await e.reply(
+        `ℹ️ 你连的是外部 meme 服务（${Config.getApiUrl()}）\n` +
+        '表情资源由服务提供方维护，本机拉仓库、改 config.toml、重启进程都作用不到它身上，\n' +
+        '所以这里只刷新本地索引（和 #meme刷新 一样）。\n' +
+        '👉 服务方更新了表情，你发这个就能同步到\n\n' +
+        '（如果 meme 服务其实就在这台机器上、想让插件接管资源，把配置 serviceMode 改成 local）'
+      )
+      return this.reloadOnly(e, true)
+    }
+
     const repos = Config.get('repos') || []
     if (repos.length === 0) {
       await e.reply('没有配置任何表情仓库')

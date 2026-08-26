@@ -91,7 +91,7 @@ em { font-size: 15px; font-style: normal; color: #6d5b66; }
  * @returns {Promise<string>} 图片路径
  */
 export async function renderHelp (info = {}) {
-  const { total = 0, keywords = 0, web = null, canMake = false } = info
+  const { total = 0, keywords = 0, web = null, canMake = false, local = true } = info
 
   const make = block('🎨', '做表情', [
     ['#摸头', '用自己头像'],
@@ -112,13 +112,15 @@ export async function renderHelp (info = {}) {
     ['#meme排行', '出图看用量榜，谁最能整活']
   ], 'blue')
 
+  // 用外部 meme 服务时，更新和部署都不是这台机器的事，文案得跟着变，
+  // 不然主人会以为 #meme更新 能把服务方的仓库也拉过来
   const admin = block('🔧', '管理 · 群管/主人', [
     ['#meme开启 / #meme关闭', '本群开关，群管可用'],
-    ['#meme更新', '拉新表情并热加载'],
+    ['#meme更新', local ? '拉新表情并热加载' : '同步服务方的新表情'],
     ['#meme刷新', '只重建索引'],
     ['#meme部署状态', '查服务健康度'],
     ['#meme清缓存', '清空预览图缓存'],
-    ['#meme部署', '本机装一套 meme 服务']
+    ...(local ? [['#meme部署', '本机装一套 meme 服务']] : [])
   ], 'lilac')
 
   const tips = tipBlock('💡', '小贴士', [

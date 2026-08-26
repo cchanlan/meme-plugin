@@ -70,6 +70,35 @@ const Config = {
     const proxy = String(this.get('gitProxy') || '').trim()
     if (!proxy) return url
     return proxy.replace(/\/+$/, '') + '/' + url
+  },
+
+  /**
+   * meme 服务是不是「本机这套、插件管得着的」。
+   *
+   * 这个判断决定 #meme更新 要不要拉仓库。表情资源（几个 G 的 git 仓库）、
+   * config.toml 的 meme_dirs、pm2 重启，这三件事全都只对**跑在本机、由本插件管**
+   * 的服务有效：填了别人的服务地址还去拉仓库，等于白下几个 G 到自己盘上，
+   * 没有任何进程会去扫它，还要被 clone 失败的报错刷一脸。
+   *
+   * auto 只看 host 是不是回环地址 —— 局域网另一台机器上的服务同样管不着，算远端。
+   * 本机 docker 里跑服务是 auto 判不出来的（host 也是 127.0.0.1，但仓库和
+   * config.toml 在容器里面），这种要手动设 remote；反过来服务在别的机器上、
+   * 但资源目录挂载到了本机，设 local。
+   */
+  isLocalService () {
+    const mode = String(this.get('serviceMode') || 'auto').trim().toLowerCase()
+    if (mode === 'local') return true
+    if (mode === 'remote') return false
+    let host
+    try {
+      host = new URL(this.getApiUrl()).hostname
+    } catch {
+      return false
+    }
+    // URL 会把 IPv6 的 host 带上方括号
+    host = host.replace(/^\[|\]$/g, '').toLowerCase()
+    return host === 'localhost' || host === '::1' || host === '0.0.0.0' ||
+      /^127\./.test(host)
   }
 }
 
