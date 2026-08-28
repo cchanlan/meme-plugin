@@ -261,8 +261,56 @@ export class memeFun extends plugin {
       })
     }
 
+    // 优先合并转发发原图 —— 拼图只能是首帧，动图表情在里头是不动的（一眼假）。
+    // 转发失败（适配器不支持、图太多太大）再退回一张网格图
+    if (Config.get('comboForward') && await this.sendForward(e, who, picked)) return true
+    await this.sendGrid(e, who, picked)
+    return true
+  }
+
+  /**
+   * 合并转发：每张原图一条，动图能动。
+   *
+   * @returns {Promise<boolean>} 发出去了返回 true；不支持/太大/出错返回 false 让调用方退回网格图
+   */
+  async sendForward (e, who, picked) {
+    const total = picked.reduce((s, d) => s + d.buffer.length, 0)
+    // 一条合并转发整体过大会被服务端拒（实测十几 MB 那量级就发不出去），
+    // 与其失败不如退回网格图。9 张最坏情况约 12MB，所以这道判断是会真的用上的
+    if (total > 10 * 1024 * 1024) {
+      logger.mark(`${logPrefix} 整活结果共 ${(total / 1048576).toFixed(1)}MB，改用网格图`)
+      return false
+    }
+
+    const locs = []
+    try {
+      ensureDir('result')
+      const nodes = picked.map(d => {
+        const loc = dataPath('result', uniqueName(d.contentType.split('/')[1] || 'gif'))
+        fs.writeFileSync(loc, d.buffer)
+        locs.push(loc)
+        return [`#${nameOf(d.code)}\n`, segment.image(`file://${loc}`)]
+      })
+      const common = (await import('../../../lib/common/common.js')).default
+      const forward = await common.makeForwardMsg(e, nodes, `🎪 ${who} 的整活现场`)
+      await e.reply(forward)
+      await e.reply(`🎪 给 ${who} 整了 ${picked.length} 个活，点开看　·　照名字单独发就能再来一张\n${picked.map(d => '#' + nameOf(d.code)).join('　')}`)
+      return true
+    } catch (err) {
+      // 官方 bot 之类没有 makeForwardMsg 的平台会走到这儿
+      logger.error(`${logPrefix} 整活合并转发失败，改用网格图: ${err.message}`)
+      return false
+    } finally {
+      // 和 apps/meme.js 一样：reply 返回时图已经上传完了，直接删。
+      // 万一漏了也有 cleanupStale 兜底
+      for (const loc of locs) unlinkQuietly(loc)
+    }
+  }
+
+  /** 一张网格图：转发不可用时的退路，也是 comboForward 关掉后的默认样子 */
+  async sendGrid (e, who, picked) {
     // 结果图是 gif、平均几百 KB，原样内联进 HTML 会让 puppeteer 解析好几秒，
-    // 所以统一压成 webp 首帧再拼 —— 网格里本来也不需要动起来
+    // 所以统一压成 webp 首帧再拼 —— 网格里没法动，这也是默认走转发的原因
     const items = await Promise.all(picked.map(async d => {
       const small = await Preview.shrink(d.buffer, 200, d.contentType)
       return {
@@ -276,7 +324,7 @@ export class memeFun extends plugin {
     try {
       loc = await renderGrid(items, {
         title: `${who} 的整活现场`,
-        footer: `随机 ${items.length} 个表情　·　想要动图版就单独发下面的指令`,
+        footer: `随机 ${items.length} 个表情　·　动图版要照名字单独发一次`,
         columns: gridColumns(items.length)
       })
       await e.reply([
@@ -285,7 +333,7 @@ export class memeFun extends plugin {
       ])
     } catch (err) {
       logger.error(`${logPrefix} 整活拼图失败: ${err.message}`)
-      // 拼图这一步挂了（缺 puppeteer / 内存不足）也别浪费已经做好的图，
+      // 拼图这一步也挂了（缺 puppeteer / 内存不足）就别浪费已经做好的图，
       // 挑第一张发出去，动图还是动的
       await replyImage(e, picked[0].buffer,
         `拼图失败了（${err.message}），先给一张：#${nameOf(picked[0].code)}`,
@@ -293,6 +341,5 @@ export class memeFun extends plugin {
     } finally {
       if (loc) unlinkQuietly(loc)
     }
-    return true
   }
 }

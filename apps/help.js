@@ -99,7 +99,8 @@ export class memeHelp extends plugin {
       lines.push('【随机整活】')
       lines.push('  #抽个cp —— 随机抽两个群友，配一个双人表情')
       lines.push('             也能 #抽个cp @张三（另一位随机）或 @ 两个人')
-      lines.push('  #整活 @某人 —— 拿他头像连出好几个表情，拼成一张图')
+      lines.push('  #整活 @某人 —— 拿他头像连出好几个表情，合并转发发原图')
+      lines.push('                 动图也能动；想拼成一张图看就关掉配置 comboForward')
     }
     lines.push('')
     lines.push(`目前共 ${MemeIndex.memeCount} 个表情 / ${MemeIndex.keywordCount} 个关键词`)

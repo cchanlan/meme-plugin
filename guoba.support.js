@@ -117,9 +117,15 @@ export function supportGuoba () {
         {
           field: 'comboCount',
           label: '整活一次做几个',
-          bottomHelpMessage: '上限 9 —— QQ 气泡里图片最多显示约 420px 宽，8 格已经是「表情名还读得清」的边界',
+          bottomHelpMessage: '上限 9 —— 走网格图时 QQ 气泡里图片最多显示约 420px 宽，8 格已经是「表情名还读得清」的边界',
           component: 'InputNumber',
           componentProps: { min: 1, max: 9 }
+        },
+        {
+          field: 'comboForward',
+          label: '整活用合并转发发原图',
+          bottomHelpMessage: '表情里有不少是动图，拼成一张网格图只能取首帧、看着像坏了。开着就用合并转发每张原图一条，动图能动；关掉则拼成一张网格图，一眼看全但都是静态。转发发不出去时（适配器不支持、加起来超过 10MB）会自动退回网格图',
+          component: 'Switch'
         },
         {
           field: 'funSafeOnly',
