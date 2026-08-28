@@ -105,6 +105,41 @@ export async function getSelfAvatarUrl (e) {
 }
 
 /**
+ * 群成员 uid 列表，给「随机抽群友」用。
+ *
+ * 先吃 gml 缓存（一次请求都不发），没有再问适配器要 getMemberMap()。
+ * 拿不到就返回空数组 —— 调用方要能在「只有发起人」的情况下退化，
+ * 私聊、官方 bot 这些场景本来就没有群成员名单。
+ *
+ * 机器人自己要剔掉：抽到它自己去跟人贴贴很怪，而且它的头像多半是张 logo。
+ *
+ * @returns {Promise<string[]>}
+ */
+export async function getMemberList (e) {
+  if (!e.group_id) return []
+  let ids = []
+
+  const gml = e.bot?.gml
+  const cached = typeof gml?.get === 'function'
+    ? (gml.get(e.group_id) ?? gml.get(Number(e.group_id)) ?? gml.get(String(e.group_id)))
+    : null
+  if (cached && typeof cached.keys === 'function') ids = [...cached.keys()]
+
+  if (!ids.length && typeof e.group?.getMemberMap === 'function') {
+    try {
+      const map = await e.group.getMemberMap()
+      if (map && typeof map.keys === 'function') ids = [...map.keys()]
+      else if (map) ids = Object.keys(map)
+    } catch (err) {
+      logger.debug(`${logPrefix} 取群成员列表失败：${err.message}`)
+    }
+  }
+
+  const self = String(e.self_id ?? e.bot?.uin ?? '')
+  return ids.map(String).filter(id => id && id !== self)
+}
+
+/**
  * 群成员的名片与性别，给表情的 user_infos 用。
  *
  * @param {object} e 消息事件

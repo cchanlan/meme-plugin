@@ -62,7 +62,9 @@ function bestColumns (n) {
 
 /**
  * 渲染表情网格图
- * @param {Array<{key:string, label:string, sub?:string}>} items
+ * @param {Array<{key:string, label:string, sub?:string, dataUri?:string}>} items
+ *        自带 dataUri 的条目直接用它当图（「整活」拼的是刚生成出来的结果，
+ *        那些图不在 preview 缓存里、也没有对应的 key 可查）；不带就按 key 去拿预览缩略图
  * @param {{title?:string, footer?:string, columns?:number, thumbWidth?:number, out?:string}} opts
  *        out 传了就写到指定路径（列表分页图要落盘复用），不传则用带时间戳的临时名
  * @returns {Promise<string>} 生成的图片路径
@@ -80,6 +82,10 @@ export async function renderGrid (items, opts = {}) {
   // 免得 puppeteer 去请求本地 HTTP 服务（多一层依赖、还可能撞上并发限制）
   const cells = []
   for (const it of items) {
+    if (it.dataUri) {
+      cells.push(it)
+      continue
+    }
     let dataUri = ''
     try {
       const { buffer, contentType } = await Preview.getThumb(it.key, thumbWidth)

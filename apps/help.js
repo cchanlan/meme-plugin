@@ -29,6 +29,7 @@ export class memeHelp extends plugin {
     const canMake = !!(web && Config.get('enableWebMake'))
     // 用外部服务时「拉表情仓库」「本机部署」这两件事都不成立，帮助里别乱指路
     const local = Config.isLocalService()
+    const fun = !!Config.get('enableFun')
 
     let loc = null
     try {
@@ -37,7 +38,8 @@ export class memeHelp extends plugin {
         keywords: MemeIndex.keywordCount,
         web,
         canMake,
-        local
+        local,
+        fun
       })
     } catch (err) {
       logger.error(`${logPrefix} 帮助图渲染失败：${err.message}`)
@@ -54,6 +56,7 @@ export class memeHelp extends plugin {
         '#meme排行　看谁最能整活',
         `共 ${MemeIndex.memeCount} 个表情 / ${MemeIndex.keywordCount} 个关键词`
       ]
+      if (fun) text.splice(6, 0, '#抽个cp　#整活 @某人　随机整活')
       if (web) text.push(`在线预览：${web}`)
       if (canMake) text.push('（网页里还能直接传图在线生成）')
       await e.reply([segment.image(`file://${loc}`), text.join('\n')])
@@ -62,11 +65,11 @@ export class memeHelp extends plugin {
     }
 
     // 出图失败（缺 puppeteer / 内存不足）时退回纯文字，功能不受影响
-    await e.reply(this.textHelp(web, canMake, local))
+    await e.reply(this.textHelp(web, canMake, local, fun))
     return true
   }
 
-  textHelp (web, canMake = false, local = true) {
+  textHelp (web, canMake = false, local = true, fun = true) {
     const lines = [
       '🌸 表情包使用说明',
       '',
@@ -91,6 +94,13 @@ export class memeHelp extends plugin {
     lines.push('  #meme分类 —— 按作品/系列看，如 #meme分类 鸣潮')
     lines.push('  #随机meme —— 随机来一个')
     lines.push('  #meme排行 —— 出图看谁最能整活、哪个表情最火')
+    if (fun) {
+      lines.push('')
+      lines.push('【随机整活】')
+      lines.push('  #抽个cp —— 随机抽两个群友，配一个双人表情')
+      lines.push('             也能 #抽个cp @张三（另一位随机）或 @ 两个人')
+      lines.push('  #整活 @某人 —— 拿他头像连出好几个表情，拼成一张图')
+    }
     lines.push('')
     lines.push(`目前共 ${MemeIndex.memeCount} 个表情 / ${MemeIndex.keywordCount} 个关键词`)
     lines.push('')

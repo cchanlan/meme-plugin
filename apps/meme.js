@@ -7,6 +7,7 @@ import MemeIndex from '../model/memeIndex.js'
 import Stats from '../model/stats.js'
 import { handleArgs, detail } from '../utils/args.js'
 import { renderDetail } from '../utils/detailImage.js'
+import { fetchImage } from '../utils/download.js'
 import { uniqueName, unlinkQuietly, ensureDir, dataPath } from '../utils/file.js'
 import { blocked } from '../utils/guard.js'
 import { getAvatarUrl, getSelfAvatarUrl, getMemberInfo } from '../utils/user.js'
@@ -17,28 +18,9 @@ async function getMasterQQ () {
 }
 
 /**
- * 下一张用户图。两处都是踩过的：
- * - 必须带超时：裸 fetch 遇上 QQ 图床偶发不返回时，会把整条消息一直挂在那儿，
- *   等 Yunzai 自己超时，期间这个人再发指令还会叠一份
- * - 大小要先看 content-length：原来只在下载完之后用 checkFileSize 拦，
- *   流量已经吃进来了，maxFileSize 只挡住了生成、没挡住下载
+ * 下一张用户图。实现挪到 utils/download.js（apps 下每个文件只能有一个导出，
+ * 详见那边的注释），这里只保留引用。
  */
-async function fetchImage (url, maxBytes, timeoutMs) {
-  const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  const tooBig = n => {
-    const err = new Error(`图片 ${(n / 1048576).toFixed(1)}MB，超过 ${(maxBytes / 1048576).toFixed(0)}MB 限制`)
-    err.oversize = true
-    return err
-  }
-  const len = Number(res.headers.get('content-length'))
-  if (len && len >= maxBytes) throw tooBig(len)
-  const buffer = Buffer.from(await res.arrayBuffer())
-  // 分块传输不给 content-length，这种只能下完再判
-  if (buffer.length >= maxBytes) throw tooBig(buffer.length)
-  const type = (res.headers.get('Content-Type') || 'image/jpeg').split(';')[0]
-  return { buffer, ext: type.split('/')[1] || 'jpeg' }
-}
 
 export class memeMaker extends plugin {
   constructor () {

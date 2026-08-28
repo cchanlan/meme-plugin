@@ -91,7 +91,7 @@ em { font-size: 15px; font-style: normal; color: #6d5b66; }
  * @returns {Promise<string>} 图片路径
  */
 export async function renderHelp (info = {}) {
-  const { total = 0, keywords = 0, web = null, canMake = false, local = true } = info
+  const { total = 0, keywords = 0, web = null, canMake = false, local = true, fun = true } = info
 
   const make = block('🎨', '做表情', [
     ['#摸头', '用自己头像'],
@@ -125,6 +125,15 @@ export async function renderHelp (info = {}) {
     ...(local ? [['#meme部署 / #meme卸载', '本机装一套 meme 服务 / 卸掉']] : [])
   ], 'lilac')
 
+  // 整活玩法能关（enableFun），关掉了就别在帮助里指一条不响应的路
+  const play = fun
+    ? block('🎪', '随机整活', [
+        ['#抽个cp', '随机两个群友配个双人表情'],
+        ['#抽个cp @张三', '指定一位，另一位随机'],
+        ['#整活 @某人', '连出好几个表情拼一张图']
+      ], 'lilac')
+    : ''
+
   const tips = tipBlock('💡', '小贴士', [
     '· 表情名认全部别名，「摸鱼」不会被「摸」抢走',
     '· 搜索超过 8 个时会另发文字版名字，方便复制',
@@ -142,7 +151,7 @@ export async function renderHelp (info = {}) {
 <div class="line"></div>
 <div class="cols">
   <div>${make}${tips}</div>
-  <div>${find}${admin}</div>
+  <div>${find}${play}${admin}</div>
 </div>
 ${web ? `<div class="ft">🌟 <b>在线预览</b>　${esc(web)}　—— 看图挑表情，点一下复制指令${canMake ? '，还能直接在线出图' : ''}</div>` : ''}
 <div class="tip">指令前缀 # 可在配置里关掉 · 表情名支持全部别名</div>

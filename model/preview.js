@@ -136,6 +136,34 @@ const Preview = {
     })
   },
 
+  /**
+   * 把任意一张图压成小尺寸 webp 首帧。
+   *
+   * 给「整活」拼网格用：那些图是刚生成出来的结果（`image/gif`，动辄几百 KB），
+   * 既不在 preview 缓存里、也没有 key 可查。9 张原图内联成 data URI 塞进 HTML
+   * 有好几 MB，puppeteer 光解析就要好几秒。
+   *
+   * 复用这里的 sharp 探测：sharp 缺失或压缩失败时原样返回，出图只是变大不会断。
+   *
+   * @param {Buffer} buffer
+   * @param {number} width
+   * @param {string} fallbackType 没压成时按什么 Content-Type 回给调用方
+   */
+  async shrink (buffer, width = 200, fallbackType = 'image/gif') {
+    const s = await getSharp()
+    if (!s) return { buffer, contentType: fallbackType }
+    try {
+      const out = await s(buffer, { animated: false })
+        .resize({ width, height: width, fit: 'inside', withoutEnlargement: true })
+        .webp({ quality: 72, effort: 4 })
+        .toBuffer()
+      return { buffer: out, contentType: 'image/webp' }
+    } catch (err) {
+      logger.debug(`${logPrefix} 压缩结果图失败，用原图: ${err.message}`)
+      return { buffer, contentType: fallbackType }
+    }
+  },
+
   /** 缓存统计，给部署状态用 */
   stats () {
     const count = dir => {

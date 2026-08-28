@@ -226,6 +226,23 @@ const MemeIndex = {
     })
   },
 
+  /**
+   * 适合「两个人」玩法的表情：正好要两张图、不需要文字。
+   *
+   * 实测 944 个表情里有 52 个满足（抱、击剑、贴、亲、幻影坦克…），
+   * 且 `min_images === 2` 的表情**没有一个是同时要文字的**，
+   * 所以不用再操心「抽到了却缺文案」。这些表情的两张图有语义（谁在上谁在下），
+   * 调用方给的顺序就是出图顺序。
+   */
+  pairCandidates () {
+    const blocked = blockedCodes()
+    return Object.keys(infos).filter(code => {
+      if (blocked.has(code)) return false
+      const pt = infos[code]?.params_type
+      return pt && pt.min_images === 2 && pt.max_images >= 2 && pt.min_texts === 0
+    })
+  },
+
   /** 给 web 前端用的精简元数据，按最近更新排前面 */
   toWebData () {
     const blocked = blockedCodes()

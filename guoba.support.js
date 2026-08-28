@@ -99,6 +99,47 @@ export function supportGuoba () {
         },
         {
           component: 'Divider',
+          label: '随机整活玩法'
+        },
+        {
+          field: 'enableFun',
+          label: '启用随机整活',
+          bottomHelpMessage: '#抽个cp（随机两个群友配一个双人表情）和 #整活 @某人（连出好几个表情拼一张图）。关掉后这两条指令静默不响应',
+          component: 'Switch'
+        },
+        {
+          field: 'funCooldown',
+          label: '整活冷却(秒)',
+          bottomHelpMessage: '同一个群里两条玩法各自的冷却。一次「整活」要连做好几张图，而 meme 服务是单进程 Python，被连点会把普通 #摸头 一起拖慢。0 为不限',
+          component: 'InputNumber',
+          componentProps: { min: 0, max: 600 }
+        },
+        {
+          field: 'comboCount',
+          label: '整活一次做几个',
+          bottomHelpMessage: '上限 9 —— QQ 气泡里图片最多显示约 420px 宽，8 格已经是「表情名还读得清」的边界',
+          component: 'InputNumber',
+          componentProps: { min: 1, max: 9 }
+        },
+        {
+          field: 'funSafeOnly',
+          label: '只随机安全表情',
+          bottomHelpMessage: '这两条指令是插件替你挑表情，挑中什么就直接发出去。开着会跳过 protectList 里的表情和下面词表命中的表情，避免一次整活里混进成人向的那些。关掉表示「我就是要玩」——#整活 @主人 那条路仍受主人保护',
+          component: 'Switch'
+        },
+        {
+          field: 'funExcludeWords',
+          label: '整活排除词',
+          bottomHelpMessage: '按表情的关键词/分类匹配。protectList 是固定 key 列表，新装一个仓库就会漏；词表对新表情同样生效',
+          component: 'GTags',
+          componentProps: {
+            placeholder: '输入要排除的词后回车',
+            allowAdd: true,
+            allowDel: true
+          }
+        },
+        {
+          component: 'Divider',
           label: '黑名单 / 群开关'
         },
         {
