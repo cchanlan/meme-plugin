@@ -93,12 +93,12 @@ export class memeList extends plugin {
       // 内容一变文件名就变，旧图交给 cleanupStale 24 小时后收走。
       const sig = crypto.createHash('md5').update(pageCodes.join(',')).digest('hex').slice(0, 8)
       const loc = await renderPage(pageCodes, page, totalPages, `page_${page}_${pageSize}_${sig}.jpg`)
-      // 三行挤在同一个文本段里：分成多段发时 QQ 会把它们首尾粘住，看着像一行
+      // 页码、总数、翻页指令图里的标题和 footer 都印着了，不再用文字重复一遍。
+      // 只有链接非得走文字 —— 图上的 URL 点不了
       const web = webLine()
-      const tip = `第 ${page}/${totalPages} 页 · 共 ${MemeIndex.memeCount} 个表情\n` +
-        `翻页：#meme列表 ${page < totalPages ? page + 1 : 1}` +
-        (web ? `\n${web}` : '')
-      await e.reply([segment.image(`file://${loc}`), tip])
+      const parts = [segment.image(`file://${loc}`)]
+      if (web) parts.push(web)
+      await e.reply(parts)
     } catch (err) {
       logger.error(`${logPrefix} 渲染列表失败: ${err.message}`)
       await e.reply(`列表渲染失败：${err.message}`)

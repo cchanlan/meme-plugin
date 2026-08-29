@@ -46,20 +46,13 @@ export class memeHelp extends plugin {
     }
 
     if (loc) {
-      // 图里字被 QQ 缩放后偏小，核心指令再补一段文字：可复制、链接可点
-      const text = [
-        '🌸 常用指令',
-        '#摸头 / #摸头 @某人 / 引用图片 + #摸头',
-        '#一巴掌 笨蛋　多段文字用 / 隔开',
-        '#摸头详情　看这个表情支持哪些参数',
-        '#meme搜索 猫　#meme列表　#meme分类',
-        '#meme排行　看谁最能整活',
-        `共 ${MemeIndex.memeCount} 个表情 / ${MemeIndex.keywordCount} 个关键词`
-      ]
-      if (fun) text.splice(6, 0, '#抽个cp　#整活 @某人　随机整活')
-      if (web) text.push(`在线预览：${web}`)
+      // 图里每条指令都印着了，文字只留图上办不到的那一件事：链接要能点
+      const text = []
+      if (web) text.push(`🌟 在线预览：${web}`)
       if (canMake) text.push('（网页里还能直接传图在线生成）')
-      await e.reply([segment.image(`file://${loc}`), text.join('\n')])
+      const parts = [segment.image(`file://${loc}`)]
+      if (text.length) parts.push(text.join('\n'))
+      await e.reply(parts)
       unlinkQuietly(loc)
       return true
     }

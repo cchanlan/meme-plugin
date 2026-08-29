@@ -191,9 +191,9 @@ export class memeFun extends plugin {
         name: e.sender.card || e.sender.nickname
       })
       const names = infos.map(i => _.trim(i.text, '@'))
-      await replyImage(e, res.buffer,
-        `💞 ${names[0]} × ${names[1]}\n表情：#${nameOf(code)}（想要动图版就单独发它）`,
-        res.contentType)
+      // 图里没有任何文字，所以「谁 × 谁」「用的哪个表情」只能靠这一行；
+      // 发的就是原图，动图本来会动，不用再教人怎么拿动图
+      await replyImage(e, res.buffer, `💞 ${names[0]} × ${names[1]}　·　#${nameOf(code)}`, res.contentType)
       return true
     }
 
@@ -293,8 +293,8 @@ export class memeFun extends plugin {
       })
       const common = (await import('../../../lib/common/common.js')).default
       const forward = await common.makeForwardMsg(e, nodes, `🎪 ${who} 的整活现场`)
+      // 只发转发本身：每条节点开头就是 #表情名，外面再列一遍名字纯属刷屏
       await e.reply(forward)
-      await e.reply(`🎪 给 ${who} 整了 ${picked.length} 个活，点开看　·　照名字单独发就能再来一张\n${picked.map(d => '#' + nameOf(d.code)).join('　')}`)
       return true
     } catch (err) {
       // 官方 bot 之类没有 makeForwardMsg 的平台会走到这儿
@@ -327,10 +327,9 @@ export class memeFun extends plugin {
         footer: `随机 ${items.length} 个表情　·　动图版要照名字单独发一次`,
         columns: gridColumns(items.length)
       })
-      await e.reply([
-        segment.image(`file://${loc}`),
-        items.map(i => i.label).join('　')
-      ])
+      // 只发图：最多 9 格、每格都印着 #表情名 且清晰可读（搜索那边格子多到
+      // 字只剩几个像素才需要另发一份文字版），再列一遍就是重复
+      await e.reply(segment.image(`file://${loc}`))
     } catch (err) {
       logger.error(`${logPrefix} 整活拼图失败: ${err.message}`)
       // 拼图这一步也挂了（缺 puppeteer / 内存不足）就别浪费已经做好的图，
