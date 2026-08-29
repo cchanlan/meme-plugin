@@ -18,12 +18,11 @@
 
 ## 三步装好
 
-**① 把插件下载到 Yunzai 的 plugins 目录**
+**① 把插件下载下来** —— 在**云崽根目录**执行
 
 ```bash
-cd Yunzai/plugins
-git clone https://gitcode.com/ccxhan/meme-plugin.git
-# GitHub 也行：git clone https://github.com/cchanlan/meme-plugin.git
+git clone --depth=1 https://gitcode.com/ccxhan/meme-plugin.git ./plugins/meme-plugin
+# GitHub 也行：https://github.com/cchanlan/meme-plugin.git
 ```
 
 然后重启 Yunzai。**不用装任何依赖**，插件用的都是 Yunzai 自带的东西。
