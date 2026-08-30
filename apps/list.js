@@ -4,6 +4,7 @@ import _ from 'lodash'
 import Config from '../model/config.js'
 import MemeIndex from '../model/memeIndex.js'
 import { renderGrid } from '../utils/gridImage.js'
+import { IMG_EXT } from '../utils/browser.js'
 import { dataPath, ensureDir, unlinkQuietly } from '../utils/file.js'
 import { blocked, emptyIndexTip } from '../utils/guard.js'
 import { logPrefix } from '../constants/path.js'
@@ -92,7 +93,7 @@ export class memeList extends plugin {
       // （改配置不会清图片缓存）旧图还在，被拉黑的表情继续挂在列表里露脸。
       // 内容一变文件名就变，旧图交给 cleanupStale 24 小时后收走。
       const sig = crypto.createHash('md5').update(pageCodes.join(',')).digest('hex').slice(0, 8)
-      const loc = await renderPage(pageCodes, page, totalPages, `page_${page}_${pageSize}_${sig}.jpg`)
+      const loc = await renderPage(pageCodes, page, totalPages, `page_${page}_${pageSize}_${sig}${IMG_EXT}`)
       // 页码、总数、翻页指令图里的标题和 footer 都印着了，不再用文字重复一遍。
       // 只有链接非得走文字 —— 图上的 URL 点不了
       const web = webLine()

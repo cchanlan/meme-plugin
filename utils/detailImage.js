@@ -3,7 +3,7 @@ import Preview from '../model/preview.js'
 import { argSchemas, getEnum } from './args.js'
 import { dataDir, logPrefix } from '../constants/path.js'
 import { mkdirs } from './file.js'
-import { shotHtml, THEME_CSS } from './browser.js'
+import { shotHtml, THEME_CSS, IMG_EXT } from './browser.js'
 
 /**
  * 「#摸头详情」的出图版。
@@ -178,7 +178,7 @@ export async function renderDetail (code, info) {
 
   const dir = path.join(dataDir, 'list_cache')
   mkdirs(dir)
-  const loc = path.join(dir, `detail_${code}_${Date.now()}_${process.pid}.jpg`)
+  const loc = path.join(dir, `detail_${code}_${Date.now()}_${process.pid}${IMG_EXT}`)
   // scale 2：详情图字号偏小，缩放后要点开还能看清
-  return shotHtml(html, loc, { width: WIDTH, scale: 2, quality: 92 })
+  return shotHtml(html, loc, { width: WIDTH, scale: 2.5 })
 }

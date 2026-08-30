@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import Preview from '../model/preview.js'
 import { dataDir, logPrefix } from '../constants/path.js'
 import { mkdirs } from './file.js'
-import { shotHtml, THEME_CSS } from './browser.js'
+import { shotHtml, THEME_CSS, IMG_EXT } from './browser.js'
 
 /**
  * 用 puppeteer 把表情渲染成带真实预览图的网格。
@@ -168,7 +168,7 @@ ${footer ? `<div class="ft">${esc(footer)}</div>` : ''}
   const dir = path.join(dataDir, 'list_cache')
   mkdirs(dir)
   const width = columns * CELL_W + PAD_W
-  if (!out) return shotHtml(html, path.join(dir, `grid_${Date.now()}_${process.pid}.jpg`), { width })
+  if (!out) return shotHtml(html, path.join(dir, `grid_${Date.now()}_${process.pid}${IMG_EXT}`), { width })
 
   // 要落盘复用的那张（列表分页图）先写临时名再改名：同一页会被好几个人同时翻，
   // 两个 screenshot 往同一路径写，中间那一刻读到的是半张图 ——

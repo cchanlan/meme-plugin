@@ -4,7 +4,7 @@ import MemeIndex from '../model/memeIndex.js'
 import { dataDir, logPrefix } from '../constants/path.js'
 import { mkdirs } from './file.js'
 import { qqAvatar } from './user.js'
-import { shotHtml, THEME_CSS } from './browser.js'
+import { shotHtml, THEME_CSS, IMG_EXT } from './browser.js'
 
 /**
  * 用量榜出图。
@@ -212,6 +212,6 @@ ${s.recent.map(r => `<div class="tw">
 
   const dir = path.join(dataDir, 'list_cache')
   mkdirs(dir)
-  const loc = path.join(dir, `stats_${Date.now()}_${process.pid}.jpg`)
-  return shotHtml(html, loc, { width: WIDTH, scale: 2, quality: 92 })
+  const loc = path.join(dir, `stats_${Date.now()}_${process.pid}${IMG_EXT}`)
+  return shotHtml(html, loc, { width: WIDTH, scale: 2.5 })
 }

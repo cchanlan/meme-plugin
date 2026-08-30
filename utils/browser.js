@@ -76,25 +76,66 @@ export async function closeBrowser () {
 }
 
 /**
+ * 出图统一用 webp：同一张图实测 scale 2.5 + webp q82 比原来 scale 2 + jpeg q92
+ * 体积更小、分辨率更高、失真更低（webp 的 q82 视觉上相当于 jpeg 的 q90+）。
+ * QQ 客户端认 webp（2026-08-31 真机验过 #meme帮助）。
+ * 扩展名必须跟内容一致 —— NapCat 上传按后缀判 MIME，所以文件名也从这里取。
+ */
+export const IMG_FORMAT = 'webp'
+export const IMG_EXT = '.webp'
+export const IMG_QUALITY = 82
+
+/** sharp 是主仓库自带的，缺了也要能跑——退回 Chromium 内置 jpeg 编码 */
+let sharpMod = null
+let sharpChecked = false
+async function getSharp () {
+  if (sharpChecked) return sharpMod
+  sharpChecked = true
+  try {
+    sharpMod = (await import('sharp')).default
+  } catch (err) {
+    sharpMod = null
+  }
+  return sharpMod
+}
+
+/**
  * 渲染一段 HTML 并截图。
  *
  * 截 body 而不是 fullPage：内容撑不满 viewport 时 fullPage 会在底下补一片空白，
  * 小结果图会多出一大截白边，还把宽高比算歪、在 QQ 里宽度顶不满气泡。
  *
+ * 编码走「无损 png → sharp」而不是让 Chromium 直接出 jpeg：Chromium 只能出
+ * jpeg/png/webp 且用的是内置编码器，实测 mozjpeg 同 quality 下比它小约 18%、
+ * webp 更小得多；png 是无损的所以二次编码不累积失真。sharp 缺失时退回内置 jpeg。
+ *
+ * loc 的扩展名由调用方保证与 format 一致（用 IMG_EXT），这里不改路径。
+ *
  * @param {string} html 完整 HTML
- * @param {string} loc 输出路径（.jpg）
- * @param {{width:number, scale?:number, quality?:number}} opts
+ * @param {string} loc 输出路径
+ * @param {{width:number, scale?:number, quality?:number, format?:'jpeg'|'webp'}} opts
+ * @returns {Promise<string>} 写出的路径（就是传入的 loc）
  */
 export async function shotHtml (html, loc, opts = {}) {
-  const { width, scale = 1.5, quality = 88 } = opts
+  const { width, scale = 2, quality = IMG_QUALITY, format = IMG_FORMAT } = opts
   const browser = await getBrowser()
   const page = await browser.newPage()
   try {
     await page.setViewport({ width, height: 200, deviceScaleFactor: scale })
     await page.setContent(html, { waitUntil: 'load', timeout: 60000 })
     const body = await page.$('body')
-    // jpeg 体积约为 png 的 1/5，表情图和帮助图用它足够
-    await body.screenshot({ path: loc, type: 'jpeg', quality })
+    const sharp = await getSharp()
+    if (!sharp) {
+      // 没有 sharp 只能用 Chromium 内置编码器，它也支持 webp
+      await body.screenshot({ path: loc, type: format === 'webp' ? 'webp' : 'jpeg', quality })
+      return loc
+    }
+    const png = await body.screenshot({ type: 'png' })
+    const img = sharp(png)
+    await (format === 'webp'
+      ? img.webp({ quality })
+      : img.jpeg({ quality, mozjpeg: true })
+    ).toFile(loc)
     return loc
   } finally {
     await page.close().catch(() => {})
