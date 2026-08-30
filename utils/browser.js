@@ -5,16 +5,38 @@
  * 所以放到这里共用一个实例。
  */
 
+import process from 'node:process'
+
 let browserPromise = null
 /** 当前实例，用来判断 disconnected 事件是不是「现役」那一个发出来的 */
 let current = null
 
+/**
+ * 宿主配了 chromium 路径就用它。puppeteer 自带的 Chromium 常常没下载成功
+ * （国内网络、或宿主装依赖时跳过了下载），这时不读宿主配置就只能 launch 失败。
+ * 宿主 lib 路径在各 fork 上不一定一样，所以整段 try 掉，读不到就用 puppeteer 默认行为
+ */
+async function hostChromiumPath () {
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) return process.env.PUPPETEER_EXECUTABLE_PATH
+  try {
+    const cfg = (await import('../../../lib/config/config.js')).default
+    return cfg?.bot?.chromium_path || ''
+  } catch {
+    return ''
+  }
+}
+
 async function doLaunch () {
   const puppeteer = (await import('puppeteer')).default
-  const b = await puppeteer.launch({
-    headless: 'new',
-    args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
-  })
+  // --no-sandbox / --disable-dev-shm-usage 是 Linux（尤其容器里 /dev/shm 太小）才需要的，
+  // Windows 和 macOS 上传了没用；--disable-gpu 三个平台都留着，无头下本来也用不到 GPU
+  const args = ['--disable-gpu']
+  if (process.platform === 'linux') args.unshift('--no-sandbox', '--disable-dev-shm-usage')
+  // headless: true 从 puppeteer 22 起就等价于旧的 'new'，而 'new' 已被标记废弃
+  const opts = { headless: true, args }
+  const executablePath = await hostChromiumPath()
+  if (executablePath) opts.executablePath = executablePath
+  const b = await puppeteer.launch(opts)
   current = b
   // 只有现役实例掉线才清缓存：关掉旧实例时若无条件清，会把刚建好的新实例一起作废
   b.on('disconnected', () => {
