@@ -86,7 +86,8 @@ export class memeHelp extends plugin {
     lines.push('  #meme列表 —— 分页看全部（每页 24 个，带预览图）')
     lines.push('  #meme分类 —— 按作品/系列看，如 #meme分类 鸣潮')
     lines.push('  #随机meme —— 随机来一个')
-    lines.push('  #meme排行 —— 出图看谁最能整活、哪个表情最火')
+    lines.push('  #meme排行 —— 本群榜：本群谁最能整活、哪个表情最火')
+    lines.push('  #meme总排行 —— 所有群一起排，还有最活跃的群')
     if (fun) {
       lines.push('')
       lines.push('【随机整活】')

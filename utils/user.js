@@ -140,6 +140,97 @@ export async function getMemberList (e) {
 }
 
 /**
+ * 群名。榜单上只印群号谁也认不出是哪个群，所以要拿真名。
+ *
+ * 取法按代价从低到高：事件自带 → 群列表缓存（gl）→ 问适配器。
+ * gl 的 key 类型和 gml 一样不可靠（OneBot 塞的是数字 group_id，
+ * 而 e.group_id 在有些适配器上是字符串），所以两种都试。
+ */
+
+/** 一个群信息对象里的名字，字段名各适配器不一样 */
+function nameOfGroupInfo (info) {
+  const name = info?.group_name || info?.name || info?.title
+  return typeof name === 'string' ? name.trim() : ''
+}
+
+/** 从 gl（群列表缓存）里查，不发请求。gl 为 getter 的实现每次访问都重建 Map，所以只读一次 */
+function groupFromCache (gl, gid) {
+  if (typeof gl?.get !== 'function') return null
+  return gl.get(gid) ?? gl.get(Number(gid)) ?? gl.get(String(gid)) ?? null
+}
+
+/**
+ * 本群群名，全同步、不发请求 —— 给记统计这种高频路径用，
+ * 拿不到就返回空串（调用方不要用空串盖掉上次存下来的名字）。
+ */
+export function groupNameOf (e) {
+  if (!e?.group_id) return ''
+  const direct = e.group_name || nameOfGroupInfo(e.group)
+  if (direct) return String(direct).trim()
+  return nameOfGroupInfo(groupFromCache(e.bot?.gl, e.group_id))
+}
+
+/**
+ * 取任意群的名字，允许发请求（出图前批量补名字用）。
+ * 拿不到就返回空串，出图侧退回显示群号 —— 不能因为一个群名把整张图卡住。
+ *
+ * @param {object} e 消息事件（可能拿不到，允许传 null）
+ * @param {string|number} gid 群号
+ * @param {Map} [gl] 预先取好的群列表缓存，批量取名时复用同一份
+ */
+export async function getGroupName (e, gid, gl) {
+  if (!gid) return ''
+  if (e?.group_id && String(e.group_id) === String(gid)) {
+    const own = groupNameOf(e)
+    if (own) return own
+  }
+  const cached = nameOfGroupInfo(groupFromCache(gl ?? e?.bot?.gl, gid))
+  if (cached) return cached
+
+  // 缓存里没有：可能是 bot 已经退了的群，也可能是别的 bot 账号的群。
+  // 用 strict 版 pickGroup（宿主 lib/bot.js 支持）先问「到底有没有这个群」，
+  // 免得对着一个不存在的群号白发一次网络请求。
+  let group = null
+  try {
+    if (typeof global.Bot?.pickGroup === 'function') group = global.Bot.pickGroup(gid, true) || null
+    if (!group && typeof e?.bot?.pickGroup === 'function') group = e.bot.pickGroup(gid)
+  } catch {
+    // 适配器在群不存在时可能直接抛，当成拿不到
+  }
+  if (typeof group?.getInfo !== 'function') return nameOfGroupInfo(group)
+  try {
+    return nameOfGroupInfo(await group.getInfo()) || nameOfGroupInfo(group)
+  } catch (err) {
+    logger.debug(`${logPrefix} 取群 ${gid} 名字失败：${err.message}`)
+    return nameOfGroupInfo(group)
+  }
+}
+
+/**
+ * 批量取群名，给群排行榜用。
+ * 群列表缓存只取一次；剩下要发请求的那几个并行跑，串行会把出图等成一串。
+ *
+ * @returns {Promise<Record<string, string>>} 群号 → 群名（拿不到的不进结果）
+ */
+export async function getGroupNames (e, gids) {
+  let gl = e?.bot?.gl
+  if (typeof gl?.get !== 'function') {
+    // 全局 Bot.gl 是个 getter，每次访问都要遍历所有 bot 重建 Map，所以只在这里取一次
+    try {
+      gl = global.Bot?.gl
+    } catch {
+      gl = undefined
+    }
+  }
+  const out = {}
+  await Promise.all([...new Set(gids.map(String))].map(async gid => {
+    const name = await getGroupName(e, gid, gl)
+    if (name) out[gid] = name
+  }))
+  return out
+}
+
+/**
  * 群成员的名片与性别，给表情的 user_infos 用。
  *
  * @param {object} e 消息事件

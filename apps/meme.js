@@ -10,7 +10,7 @@ import { renderDetail } from '../utils/detailImage.js'
 import { fetchImage } from '../utils/download.js'
 import { uniqueName, unlinkQuietly, ensureDir, dataPath } from '../utils/file.js'
 import { blocked } from '../utils/guard.js'
-import { getAvatarUrl, getSelfAvatarUrl, getMemberInfo } from '../utils/user.js'
+import { getAvatarUrl, getSelfAvatarUrl, getMemberInfo, groupNameOf } from '../utils/user.js'
 import { logPrefix } from '../constants/path.js'
 
 async function getMasterQQ () {
@@ -231,6 +231,7 @@ export class memeMaker extends plugin {
         code: targetCode,
         userId: e.user_id,
         groupId: e.group_id,
+        groupName: groupNameOf(e),
         name: e.sender.card || e.sender.nickname
       })
     } catch (err) {

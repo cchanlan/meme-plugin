@@ -7,7 +7,9 @@ import { qqAvatar } from './user.js'
 import { shotHtml, THEME_CSS, IMG_EXT } from './browser.js'
 
 /**
- * 用量榜出图。
+ * 用量榜出图，一套模板出两种榜：
+ * - `scope: 'group'`（`#meme排行`）本群自己的数据，没有群排行块；
+ * - `scope: 'total'`（`#meme总排行`）跨群总账，右列多一块群排行。
  *
  * 两列排（左表情榜、右玩家榜）而不是一长条：QQ 气泡按宽、高两个上限 contain 缩放，
  * 竖长图会被高度卡住、宽度顶不满，字反而更小 —— 和帮助图同一个取舍。
@@ -59,6 +61,7 @@ body { position: relative; width: ${WIDTH}px; padding: 20px 22px 18px; }
 .ov span { font-size: 12.5px; color: #93818d; }
 .ov div:nth-child(2) { border-color: #e4d8fb; } .ov div:nth-child(2) b { color: #9079c2; }
 .ov div:nth-child(3) { border-color: #d3e6fd; } .ov div:nth-child(3) b { color: #5f95d0; }
+.ov div:nth-child(5) { border-color: #e4d8fb; } .ov div:nth-child(5) b { color: #9079c2; }
 .trend { position: relative; display: flex; align-items: flex-end; gap: 9px; margin-top: 12px;
   padding: 10px 14px 8px; background: #fffdfeee; border: 1.5px solid #d3e6fd; border-radius: 16px;
   box-shadow: 0 2px 8px rgba(160, 180, 225, .10); }
@@ -108,6 +111,8 @@ body { position: relative; width: ${WIDTH}px; padding: 20px 22px 18px; }
 .gr b { flex: 0 0 22px; font-weight: 800; color: #c3aee8; text-align: center; }
 .gr span { flex: 1 1 auto; min-width: 0; color: #6d5b66; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; }
+/* 群号跟在真名后面一档更淡的小字：同名的群不少，光看名字未必分得清是哪个 */
+.gr span em { font-style: normal; font-size: 11.5px; color: #bfaec6; }
 .gr i { flex: 0 0 auto; font-style: normal; font-weight: 800; color: #9079c2; }
 .ft { position: relative; margin-top: 13px; padding: 10px 16px; font-size: 14px; color: #6d5b66;
   background: linear-gradient(112deg, #ffeaf3 0%, #f4efff 50%, #e8f2ff 100%);
@@ -129,11 +134,16 @@ function row (i, dataUri, name, count, max, round) {
 
 /**
  * 渲染用量榜
- * @param {object} s Stats.summary() 的结果
- * @param {{groupCount?:number}} extra groupCount 传了就在底部显示本群次数
+ * @param {object} s Stats.summary() / Stats.groupSummary() 的结果
+ * @param {{scope?:'group'|'total', groupName?:string, groupId?:string,
+ *          groupNames?:Record<string,string>}} extra
+ *   scope 决定标题、概览格数、有没有群排行块；groupNames 是群号→真名的补充表
  * @returns {Promise<string>} 图片路径
  */
 export async function renderStats (s, extra = {}) {
+  const isGroup = extra.scope === 'group'
+  const names = extra.groupNames || {}
+
   // 表情缩略图串行取（多半已在缓存里），头像并行抓（走外网，串行会等成一串）
   const memes = []
   for (const m of s.memes) {
@@ -157,17 +167,44 @@ export async function renderStats (s, extra = {}) {
   const since = new Date(s.since)
   const sinceStr = `${since.getMonth() + 1}月${since.getDate()}日`
 
+  const title = isGroup ? '🏆 本群表情榜' : '🏆 表情总榜'
+  const sub = [
+    isGroup && (extra.groupName || '') ? extra.groupName : '',
+    `统计自 ${sinceStr} · ${s.activeDays} 天`,
+    !isGroup && s.groupCount ? `${s.groupCount} 个群` : ''
+  ].filter(Boolean).join(' · ')
+
+  // 总榜多一格「参与的群」，格数变了列数要跟着变，不然第 5 格会掉到第二行
+  const cells = [
+    [s.total, '累计生成'],
+    [s.todayCount, '今日'],
+    [s.memeKinds, '用过的表情'],
+    [s.userCount, '参与的人'],
+    ...(isGroup ? [] : [[s.groupCount, '参与的群']])
+  ]
+
+  const emptyTip = isGroup ? '本群还没有人做过表情呢~' : '还没有人做过表情呢~'
+  const tips = isGroup
+    ? [
+        '· 只统计本群发出去的表情，失败的不算',
+        '· 每天的量看上面那排柱子，留最近 30 天',
+        '· 想看所有群一起排，发 #meme总排行'
+      ]
+    : [
+        '· 只统计真正发出去的表情，失败的不算',
+        '· 每天的量看上面那排柱子，留最近 30 天',
+        '· 只看本群的榜，发 #meme排行',
+        '· 主人发 #meme清空统计 可以清零重来'
+      ]
+
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${CSS}</style></head><body>
 <div class="hd">
-  <h1 class="grad-text">🏆 表情用量榜</h1>
-  <span class="sub">统计自 ${sinceStr} · ${s.activeDays} 天</span>
+  <h1 class="grad-text">${esc(title)}</h1>
+  <span class="sub">${esc(sub)}</span>
 </div>
 <div class="line"></div>
-<div class="ov">
-  <div><b>${s.total}</b><span>累计生成</span></div>
-  <div><b>${s.todayCount}</b><span>今日</span></div>
-  <div><b>${s.memeKinds}</b><span>用过的表情</span></div>
-  <div><b>${s.userCount}</b><span>参与的人</span></div>
+<div class="ov" style="grid-template-columns:repeat(${cells.length},1fr)">
+${cells.map(([n, label]) => `  <div><b>${n}</b><span>${label}</span></div>`).join('\n')}
 </div>
 <div class="trend">
 ${s.recent.map(r => `<div class="tw">
@@ -182,7 +219,7 @@ ${s.recent.map(r => `<div class="tw">
       <h2><span>🎨</span>最爱用的表情</h2>
       ${memes.length
         ? memes.map((m, i) => row(i, m.uri, m.name, m.n, memeMax, false)).join('')
-        : '<div class="none">还没有人做过表情呢~</div>'}
+        : `<div class="none">${emptyTip}</div>`}
     </div>
   </div>
   <div>
@@ -190,24 +227,27 @@ ${s.recent.map(r => `<div class="tw">
       <h2><span>👑</span>最能整活的人</h2>
       ${s.users.length
         ? s.users.map((u, i) => row(i, avatars[i], u.raw?.name || u.key, u.n, userMax, true)).join('')
-        : '<div class="none">还没有人做过表情呢~</div>'}
+        : `<div class="none">${emptyTip}</div>`}
     </div>
-    ${s.groups.length > 1
+    ${!isGroup && s.groups.length > 1
       ? `<div class="blk lilac">
       <h2><span>💬</span>最活跃的群</h2>
-      ${s.groups.map((g, i) => `<div class="gr"><b>${i + 1}</b><span>${esc(g.key)}</span><i>${g.n}</i></div>`).join('')}
+      ${s.groups.map((g, i) => {
+        const name = names[g.key] || g.name || ''
+        return `<div class="gr"><b>${i + 1}</b><span>${
+          name ? `${esc(name)} <em>${esc(g.key)}</em>` : esc(g.key)
+        }</span><i>${g.n}</i></div>`
+      }).join('')}
     </div>`
       : ''}
     <div class="blk lilac">
       <h2><span>💡</span>关于榜单</h2>
-      <div class="tr">· 只统计真正发出去的表情，失败的不算</div>
-      <div class="tr">· 每天的量看上面那排柱子，留最近 30 天</div>
-      <div class="tr">· 主人发 #meme清空统计 可以清零重来</div>
+      ${tips.map(t => `<div class="tr">${esc(t)}</div>`).join('\n      ')}
     </div>
   </div>
 </div>
 <div class="ft">💡 <b>玩法</b>　发 #meme搜索 猫 找表情　#meme帮助 看全部用法${
-  extra.groupCount ? `　·　本群贡献 ${extra.groupCount} 次` : ''}</div>
+  isGroup ? '' : '　·　本群榜发 #meme排行'}</div>
 </body></html>`
 
   const dir = path.join(dataDir, 'list_cache')

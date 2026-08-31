@@ -14,7 +14,7 @@ import { dataPath, ensureDir, uniqueName, unlinkQuietly } from '../utils/file.js
 import { safePool, pickSome, dropProtectedIfMaster } from '../utils/funPool.js'
 import { renderGrid } from '../utils/gridImage.js'
 import { blocked, emptyIndexTip } from '../utils/guard.js'
-import { getAvatarUrl, getSelfAvatarUrl, getMemberInfo, getMemberList } from '../utils/user.js'
+import { getAvatarUrl, getSelfAvatarUrl, getMemberInfo, getMemberList, groupNameOf } from '../utils/user.js'
 import { logPrefix } from '../constants/path.js'
 
 /** 一个表情的第一个中文名，用于文案 */
@@ -188,6 +188,7 @@ export class memeFun extends plugin {
         code,
         userId: e.user_id,
         groupId: e.group_id,
+        groupName: groupNameOf(e),
         name: e.sender.card || e.sender.nickname
       })
       const names = infos.map(i => _.trim(i.text, '@'))
@@ -257,6 +258,7 @@ export class memeFun extends plugin {
         code: d.code,
         userId: e.user_id,
         groupId: e.group_id,
+        groupName: groupNameOf(e),
         name: e.sender.card || e.sender.nickname
       })
     }
