@@ -29,8 +29,11 @@ export class memeGuess extends plugin {
           fnc: 'start'
         },
         {
-          // 空正则匹配一切：有进行中的局就当答题消息处理，没有就立刻放行
+          // 空正则匹配一切：有进行中的局就当答题消息处理，没有就立刻放行。
+          // log:false 是必须的 —— Yunzai 在「规则命中」时就会打一行「[开始处理]」，
+          // 不关的话每条群消息都多一行 meme猜表情(answer)，实测 15 分钟刷 60 多条
           reg: '',
+          log: false,
           fnc: 'answer'
         }
       ]

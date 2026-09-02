@@ -165,7 +165,7 @@ export function supportGuoba () {
         {
           field: 'crowdCount',
           label: '全群暴击人数',
-          bottomHelpMessage: '#全群摸头 随机抽几个群友。上限 9 —— QQ 气泡里 8 格已是「名字还读得清」的边界',
+          bottomHelpMessage: '#全群摸头 随机抽几个群友，结果一条消息里发原图（动图能动）。上限 9',
           component: 'InputNumber',
           componentProps: { min: 2, max: 9 }
         },

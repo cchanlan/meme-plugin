@@ -318,6 +318,8 @@ export class memeFun extends plugin {
     const rest = e.msg.replace(/^#?(随机)?套娃/, '').trim()
 
     let codes = []
+    let spare = []
+    let autoPick = false
     if (rest) {
       // 点名了：逐词解析，认不出的马上报人话，免得做完一半才发现有一个错了
       const r = parseSteps(rest)
@@ -343,7 +345,13 @@ export class memeFun extends plugin {
         await e.reply('没有能用的表情了 —— 看看 blackMemes / funExcludeWords 是不是把它们全过滤了')
         return true
       }
-      codes = pickSome(pool, Math.min(maxSteps, pool.length))
+      // 多抽一批当备胎：静态模板会把动画压平（约占池子 13%），
+      // 撞上就换一个重做，不然三层链有近四成概率半路变成静态图
+      const wanted = Math.min(maxSteps, pool.length)
+      const all = pickSome(pool, Math.min(wanted + 6, pool.length))
+      codes = all.slice(0, wanted)
+      spare = all.slice(wanted)
+      autoPick = true
     }
 
     const buffer = await avatarBuffer(e, uid)
@@ -356,7 +364,9 @@ export class memeFun extends plugin {
     await e.reply(`🎪 正在给 ${who} 叠表情（最多 ${maxSteps} 层），稍等…`, true)
 
     const { steps, stopped } = await runNest(buffer, codes, [info], {
-      maxBytes: (Config.get('nestMaxSize') || 4) * 1024 * 1024
+      maxBytes: (Config.get('nestMaxSize') || 4) * 1024 * 1024,
+      spare,
+      autoPick
     })
     if (!steps.length) {
       await e.reply('一层都没叠上，发 #meme部署状态 看看服务还好吗', true)
@@ -477,7 +487,36 @@ export class memeFun extends plugin {
       })
     }
 
-    // 网格图：每格是「群友头像做的表情」，label 写群友昵称
+    // 一条消息里把原图全发出去 —— 动图能动。
+    // 不走网格图：那个只能取首帧，摸头这类表情本来就是动的，拼完看着像坏了。
+    // 也不用合并转发（#整活 那条走的路）：这里就 6 张小图，摊开在一条里更直观
+    const total = picked.reduce((s, p) => s + p.buffer.length, 0)
+    const locs = []
+    try {
+      ensureDir('result')
+      // 名字按 picked 的顺序列（并发生成，顺序和抽人时不一定一致），
+      // 这样文字里的排列和下面图片的排列是对得上的
+      const parts = [`🎪 全员#${keyword}　·　${picked.map(p => _.truncate(p.name, { length: 8 })).join('、')}`]
+      for (const p of picked) {
+        const loc = dataPath('result', uniqueName(p.contentType.split('/')[1] || 'gif'))
+        fs.writeFileSync(loc, p.buffer)
+        locs.push(loc)
+        parts.push(segment.image(`file://${loc}`))
+      }
+      await e.reply(parts)
+    } catch (err) {
+      // 发不出去多半是图加起来太大（实测单张最大约 680KB，6 张 4MB），
+      // 退回网格图：静态但至少发得出去
+      logger.error(`${logPrefix} 全员发图失败（共 ${(total / 1048576).toFixed(1)}MB）: ${err.message}`)
+      await this.crowdGrid(e, keyword, code, picked)
+    } finally {
+      for (const loc of locs) unlinkQuietly(loc)
+    }
+    return true
+  }
+
+  /** 全员玩法的退路：拼成一张网格图。发原图失败（图太大、适配器不支持）时才用 */
+  async crowdGrid (e, keyword, code, picked) {
     const items = await Promise.all(picked.map(async p => {
       const small = await Preview.shrink(p.buffer, 200, p.contentType)
       return {
@@ -488,19 +527,19 @@ export class memeFun extends plugin {
     }))
     let loc
     try {
+      // 标题回显**用户打的那个词**，不用 keywords[0]：
+      // petpet 的别名依次是 摸/摸摸/摸头/rua，发「#全群摸头」却回「全员#摸」，
+      // 看着像认错了表情
       loc = await renderGrid(items, {
-        // 标题回显**用户打的那个词**，不用 keywords[0]：
-        // petpet 的别名依次是 摸/摸摸/摸头/rua，发「#全群摸头」却回「全员#摸」，
-        // 看着像认错了表情
         title: `全员#${keyword}`,
-        footer: `随机 ${picked.length} 位群友　·　动图版要照名字单独发一次`,
+        footer: `随机 ${picked.length} 位群友　·　图太大了，这张是静态版`,
         columns: gridColumns(items.length)
       })
       await e.reply(segment.image(`file://${loc}`))
     } catch (err) {
       logger.error(`${logPrefix} 全员拼图失败: ${err.message}`)
       await replyImage(e, picked[0].buffer,
-        `拼图失败了（${err.message}），先给一张：#${keyword}`,
+        `只发得出一张：#${keyword}`,
         picked[0].contentType)
     } finally {
       if (loc) unlinkQuietly(loc)
