@@ -1,24 +1,20 @@
 import fs from 'node:fs'
 import _ from 'lodash'
-import { File, FormData } from 'node-fetch'
 import Config from '../model/config.js'
 import MemeIndex from '../model/memeIndex.js'
-import MemeApi from '../model/memeApi.js'
 import Preview from '../model/preview.js'
 import Stats from '../model/stats.js'
-import { handleArgs } from '../utils/args.js'
 import { isBlackUser } from '../utils/black.js'
 import { coolLeft, markCool } from '../utils/cooldown.js'
-import { fetchImage } from '../utils/download.js'
-import { dataPath, ensureDir, uniqueName, unlinkQuietly } from '../utils/file.js'
+import { avatarBuffer, makeOne, nameOf, replyImage, mapLimit } from '../utils/memeMake.js'
+import { runNest, parseSteps, nestable, nestCandidates } from '../utils/nest.js'
+import { pickDaily } from '../utils/daily.js'
 import { safePool, pickSome, dropProtectedIfMaster } from '../utils/funPool.js'
 import { renderGrid } from '../utils/gridImage.js'
 import { blocked, emptyIndexTip } from '../utils/guard.js'
-import { getAvatarUrl, getSelfAvatarUrl, getMemberInfo, getMemberList, groupNameOf } from '../utils/user.js'
+import { getMemberList, getMemberInfo, groupNameOf } from '../utils/user.js'
+import { dataPath, ensureDir, uniqueName, unlinkQuietly } from '../utils/file.js'
 import { logPrefix } from '../constants/path.js'
-
-/** 一个表情的第一个中文名，用于文案 */
-const nameOf = code => MemeIndex.infos[code]?.keywords?.[0] || code
 
 /**
  * 「整活」网格的列数。
@@ -33,60 +29,6 @@ function gridColumns (n) {
   if (n % 4 === 0) return 4
   // 7 这种（>5 的质数）整不齐，交回 renderGrid 自己挑
   return undefined
-}
-
-/** 某人的头像 buffer，拿不到返回 null（不抛，调用方要能报人话） */
-async function avatarBuffer (e, uid) {
-  const url = String(uid) === String(e.sender?.user_id)
-    ? await getSelfAvatarUrl(e)
-    : await getAvatarUrl(e, uid)
-  if (!url) return null
-  const maxBytes = (Config.get('maxFileSize') || 10) * 1024 * 1024
-  try {
-    const { buffer } = await fetchImage(url, maxBytes, Config.get('imageTimeout') || 15000)
-    return buffer
-  } catch (err) {
-    logger.error(`${logPrefix} 下载 ${uid} 的头像失败: ${err.message}`)
-    return null
-  }
-}
-
-/** 用现成的头像 buffer 生成一个表情 */
-async function makeOne (code, buffers, userInfos) {
-  const fd = new FormData()
-  // 顺序有语义（双人表情里谁在上谁在下），按数组下标原样 append
-  buffers.forEach((b, i) => fd.append('images', new File([b], `avatar_${i}.jpg`, { type: 'image/jpeg' })))
-  const argsStr = handleArgs(code, MemeIndex.infos[code], '', userInfos)
-  if (argsStr) fd.set('args', argsStr)
-  return await MemeApi.generate(code, fd)
-}
-
-/** 生成结果落盘再发。segment.image 各适配器对 Buffer 的支持不一，走文件最稳（和 apps/meme.js 一致） */
-async function replyImage (e, buffer, tail, contentType = 'image/gif') {
-  ensureDir('result')
-  const loc = dataPath('result', uniqueName(contentType.split('/')[1] || 'gif'))
-  fs.writeFileSync(loc, buffer)
-  try {
-    await e.reply([segment.image(`file://${loc}`), tail])
-  } finally {
-    unlinkQuietly(loc)
-  }
-}
-
-/**
- * 限并发跑一批任务。
- *
- * meme 服务是单进程 Python，一次「整活」要连做 6~9 张，全丢过去只会一起变慢，
- * 还会把同一时间发 `#摸头` 的人一起堵住。Web 站的在线生成同样固定不超过 2 个。
- */
-async function mapLimit (items, limit, fn) {
-  let cursor = 0
-  const worker = async () => {
-    while (cursor < items.length) {
-      await fn(items[cursor++])
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
 }
 
 export class memeFun extends plugin {
@@ -106,6 +48,19 @@ export class memeFun extends plugin {
         {
           reg: '^#?(整活|表情轰炸|meme整活)(?=$|[\\s@])',
           fnc: 'combo'
+        },
+        {
+          reg: '^#?(随机)?套娃(?=$|[\\s@])',
+          fnc: 'nest'
+        },
+        {
+          // 全群/全员/全体，后面跟表情名（支持中文关键词和英文 code）
+          reg: '^#?(全群|全员|全体)(.+)$',
+          fnc: 'crowd'
+        },
+        {
+          reg: '^#?(今日表情|今日运势|每日表情)(?=$|[\\s@])',
+          fnc: 'daily'
         }
       ]
     })
@@ -342,5 +297,258 @@ export class memeFun extends plugin {
     } finally {
       if (loc) unlinkQuietly(loc)
     }
+  }
+
+  /**
+   * #套娃 表情1 表情2 … @某人 —— 把头像套进第一个表情，成品再套下一个，
+   * 一层层叠起来。什么都不写就随机抽表情。
+   *
+   * 每层必须是「正好一张图、零文字」的表情（要文字的表情没法在上一步
+   * 的成品上再加字）。动图套多了体积会爆，`nestMaxSize` 卡一道，
+   * 内容上安全池 + masterProtect 照旧。
+   */
+  async nest (e) {
+    const stop = await this.precheck(e, 'nest')
+    if (stop !== null) return stop
+
+    const at = e.message.find(m => m.type === 'at')
+    const uid = String(at?.qq || e.sender.user_id)
+
+    const maxSteps = _.clamp(parseInt(Config.get('nestMaxSteps')) || 3, 1, 5)
+    const rest = e.msg.replace(/^#?(随机)?套娃/, '').trim()
+
+    let codes = []
+    if (rest) {
+      // 点名了：逐词解析，认不出的马上报人话，免得做完一半才发现有一个错了
+      const r = parseSteps(rest)
+      if (r.bad) {
+        await e.reply(`「${r.bad}」不是表情名呀~ 发 #meme搜索 ${r.bad} 找找，或者直接写英文名`, true)
+        return true
+      }
+      codes = r.codes
+      const bad = codes.find(c => !nestable(c))
+      if (bad) {
+        await e.reply(`#${nameOf(bad)} 要配文字或用好几张图，叠不进去哦~`, true)
+        return true
+      }
+      if (codes.length > maxSteps) {
+        await e.reply(`最多叠 ${maxSteps} 层哦，叠多了图会大到发不出去`, true)
+        return true
+      }
+    } else {
+      // 没点名：随机替主人挑。随机玩法带 safety 是底线（同 #整活）
+      let pool = safePool(nestCandidates())
+      pool = await dropProtectedIfMaster(pool, [uid])
+      if (!pool.length) {
+        await e.reply('没有能用的表情了 —— 看看 blackMemes / funExcludeWords 是不是把它们全过滤了')
+        return true
+      }
+      codes = pickSome(pool, Math.min(maxSteps, pool.length))
+    }
+
+    const buffer = await avatarBuffer(e, uid)
+    if (!buffer) {
+      await e.reply('头像下不下来，稍后再试试~', true)
+      return true
+    }
+    const info = await getMemberInfo(e, uid, at?.text)
+    const who = _.trim(info.text, '@')
+    await e.reply(`🎪 正在给 ${who} 叠表情（最多 ${maxSteps} 层），稍等…`, true)
+
+    const { steps, stopped } = await runNest(buffer, codes, [info], {
+      maxBytes: (Config.get('nestMaxSize') || 4) * 1024 * 1024
+    })
+    if (!steps.length) {
+      await e.reply('一层都没叠上，发 #meme部署状态 看看服务还好吗', true)
+      return true
+    }
+    for (const s of steps) {
+      Stats.record({
+        code: s.code,
+        userId: e.user_id,
+        groupId: e.group_id,
+        groupName: groupNameOf(e),
+        name: e.sender.card || e.sender.nickname
+      })
+    }
+
+    // 中途收手的原因（体积到顶、某层失败）单独一句说清，不混进图里
+    const tip = stopped ? `（${stopped}）` : ''
+    const title = `🎪 ${who} 的套娃现场`
+    const locs = []
+    try {
+      ensureDir('result')
+      // 节点顺序就是演变过程：原头像 → 第1层 → 第2层 → …
+      const srcLoc = dataPath('result', uniqueName('jpg'))
+      fs.writeFileSync(srcLoc, buffer)
+      locs.push(srcLoc)
+      const chain = [
+        ['原图\n', segment.image(`file://${srcLoc}`)],
+        ...steps.map(s => {
+          const loc = dataPath('result', uniqueName(s.contentType.split('/')[1] || 'gif'))
+          fs.writeFileSync(loc, s.buffer)
+          locs.push(loc)
+          return [`#${nameOf(s.code)}\n`, segment.image(`file://${loc}`)]
+        })
+      ]
+      const common = (await import('../../../lib/common/common.js')).default
+      const forward = await common.makeForwardMsg(e, chain, title)
+      await e.reply(forward)
+      if (tip) await e.reply(tip)
+    } catch (err) {
+      logger.error(`${logPrefix} 套娃合并转发失败: ${err.message}`)
+      // 转发这条路挂了就退回最后一张成品
+      await replyImage(e, steps[steps.length - 1].buffer,
+        `叠了 ${steps.length} 层：${steps.map(s => '#' + nameOf(s.code)).join(' → ')}${tip}`,
+        steps[steps.length - 1].contentType)
+    } finally {
+      for (const loc of locs) unlinkQuietly(loc)
+    }
+    return true
+  }
+
+  /**
+   * #全群摸头 —— 同一表情，随机 N 个群友的头像各做一张，拼一张网格图。
+   * 只在群里能玩（私聊凑不出人来）。
+   */
+  async crowd (e) {
+    const stop = await this.precheck(e, 'crowd')
+    if (stop !== null) return stop
+
+    if (!e.group_id) {
+      await e.reply('这个要在群里玩哦~', true)
+      return true
+    }
+
+    const rest = e.msg.replace(/^#?(全群|全员|全体)/, '').trim()
+    const hit = MemeIndex.match(rest)
+    if (!hit) {
+      await e.reply('没认出要做什么表情，后面直接写表情名：比如 #全群摸头、#全员一直摸', true)
+      return true
+    }
+    const { code, keyword } = hit
+    if (!nestable(code)) {
+      await e.reply(`#${keyword} 要配文字或用好几张图，没法全员做哦~`, true)
+      return true
+    }
+
+    const members = await getMemberList(e)
+    // 人不够就按实际人数来，至少要有 2 个才有群戏
+    const count = _.clamp(parseInt(Config.get('crowdCount')) || 6, 2, 9)
+    const uids = pickSome(members.filter(id => !isBlackUser(id) && String(id) !== String(e.sender.user_id)), count)
+    if (uids.length < 2) {
+      await e.reply('群里人不够呀，凑不出一局~', true)
+      return true
+    }
+
+    // 先批量取成员信息，再下一遍头像（失败的跳过），后续按组配对生成，
+    // 顺序怎么乱都不影响「谁配哪张图」
+    const infos = await Promise.all(uids.map(uid => getMemberInfo(e, uid)))
+    const pairs = []
+    for (let i = 0; i < uids.length; i++) {
+      const b = await avatarBuffer(e, uids[i])
+      if (b) pairs.push({ buffer: b, info: infos[i] })
+    }
+    if (!pairs.length) {
+      await e.reply('头像下不下来，稍后再试试~', true)
+      return true
+    }
+
+    const picked = []
+    await mapLimit(pairs, 2, async p => {
+      const res = await makeOne(code, [p.buffer], [p.info])
+      if (!res.ok) {
+        logger.error(`${logPrefix} 全员 生成 ${code} 失败: ${res.error}`)
+        return
+      }
+      picked.push({ buffer: res.buffer, contentType: res.contentType, name: _.trim(p.info.text, '@') })
+    })
+    if (!picked.length) {
+      await e.reply('一个都没做出来，发 #meme部署状态 看看服务还好吗', true)
+      return true
+    }
+    for (const p of picked) {
+      Stats.record({
+        code,
+        userId: e.user_id,
+        groupId: e.group_id,
+        groupName: groupNameOf(e),
+        name: e.sender.card || e.sender.nickname
+      })
+    }
+
+    // 网格图：每格是「群友头像做的表情」，label 写群友昵称
+    const items = await Promise.all(picked.map(async p => {
+      const small = await Preview.shrink(p.buffer, 200, p.contentType)
+      return {
+        key: code,
+        label: _.truncate(p.name, { length: 8 }),
+        dataUri: `data:${small.contentType};base64,${small.buffer.toString('base64')}`
+      }
+    }))
+    let loc
+    try {
+      loc = await renderGrid(items, {
+        // 标题回显**用户打的那个词**，不用 keywords[0]：
+        // petpet 的别名依次是 摸/摸摸/摸头/rua，发「#全群摸头」却回「全员#摸」，
+        // 看着像认错了表情
+        title: `全员#${keyword}`,
+        footer: `随机 ${picked.length} 位群友　·　动图版要照名字单独发一次`,
+        columns: gridColumns(items.length)
+      })
+      await e.reply(segment.image(`file://${loc}`))
+    } catch (err) {
+      logger.error(`${logPrefix} 全员拼图失败: ${err.message}`)
+      await replyImage(e, picked[0].buffer,
+        `拼图失败了（${err.message}），先给一张：#${keyword}`,
+        picked[0].contentType)
+    } finally {
+      if (loc) unlinkQuietly(loc)
+    }
+    return true
+  }
+
+  /**
+   * #今日表情 —— 同一个人同一天永远抽到同一个表情 + 一句运势。
+   * 结果由 md5(QQ号+日期) 决定，不是随机，一天里反复发不会变。
+   */
+  async daily (e) {
+    if (blocked(e)) return false
+    if (!Config.get('enableFun')) return false
+    if (MemeIndex.isEmpty) {
+      await e.reply(emptyIndexTip())
+      return true
+    }
+
+    let pool = safePool(nestCandidates())
+    // 今日表情是发到大庭广众的，主人参与时别抽到敏感内容
+    pool = await dropProtectedIfMaster(pool, [e.user_id])
+    const pick = pickDaily(e.user_id, pool)
+    if (!pick) {
+      await e.reply('没有能用的表情了 —— 看看 blackMemes / funExcludeWords 是不是把它们全过滤了')
+      return true
+    }
+
+    const buffer = await avatarBuffer(e, e.sender.user_id)
+    if (!buffer) {
+      await e.reply('头像下不下来，稍后再试试~', true)
+      return true
+    }
+    const info = await getMemberInfo(e, e.sender.user_id)
+    const res = await makeOne(pick.code, [buffer], [info])
+    if (!res.ok) {
+      logger.error(`${logPrefix} 今日表情 生成 ${pick.code} 失败: ${res.error}`)
+      await e.reply('表情没做出来，发 #meme部署状态 看看服务还好吗', true)
+      return true
+    }
+    Stats.record({
+      code: pick.code,
+      userId: e.user_id,
+      groupId: e.group_id,
+      groupName: groupNameOf(e),
+      name: e.sender.card || e.sender.nickname
+    })
+    await replyImage(e, res.buffer, `🔮 今天的运势：${pick.fortune}`, res.contentType)
+    return true
   }
 }

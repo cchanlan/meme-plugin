@@ -58,6 +58,10 @@ export class memeList extends plugin {
         {
           reg: '^#?随机meme(s)?$',
           fnc: 'randomMeme'
+        },
+        {
+          reg: '^#?(meme(s)?新增|新表情)(\\s+\\d+)?$',
+          fnc: 'recentNew'
         }
       ]
     })
@@ -193,5 +197,62 @@ export class memeList extends plugin {
     maker.e = e
     e.msg = `#${keyword}`
     return await maker.makeMeme(e)
+  }
+
+  /**
+   * #meme新增 —— 最新更新的几个表情。
+   *
+   * 每个表情的 info 里带着 date_modified / date_created（定长 ISO 字符串，
+   * 直接比字符串就是时间序，不用 new Date 解析 900 多遍），
+   * 但这一页除了这里没有任何地方用到。和 #meme更新 那条播报是互补关系：
+   * 播报只在更新那一刻出现一次，这条随时可查。
+   */
+  async recentNew (e) {
+    if (blocked(e)) return false
+    if (MemeIndex.isEmpty) {
+      await e.reply(emptyIndexTip())
+      return true
+    }
+
+    const m = /(\d+)\s*$/.exec(e.msg)
+    const n = m ? _.clamp(parseInt(m[1]), 1, 40) : 24
+    // 按 date_modified（没有就回退 date_created）降序取前 n 个。
+    // infos 里带 date 的表情不到一半，老的没标日期的排最后
+    const codes = Object.entries(MemeIndex.infos)
+      .filter(([code]) => !MemeIndex.isBlocked(code))
+      .sort((a, b) => {
+        const da = a[1].date_modified || a[1].date_created || ''
+        const db = b[1].date_modified || b[1].date_created || ''
+        return db < da ? -1 : (db > da ? 1 : 0)
+      })
+      .slice(0, n)
+      .map(([code]) => code)
+
+    if (!codes.length) {
+      await e.reply('索引里没有带日期信息的表情~')
+      return true
+    }
+
+    const count = codes.length
+    let loc
+    try {
+      loc = await renderGrid(
+        codes.map(code => {
+          const kws = MemeIndex.infos[code]?.keywords || [code]
+          return { key: code, label: '#' + kws[0], sub: kws.slice(1).join(' / ') }
+        }),
+        {
+          title: `🆕 最新表情 · ${count} 个`,
+          footer: '日期是表情作者标注的，不代表装到本机的时间'
+        }
+      )
+      await e.reply(segment.image(`file://${loc}`))
+    } catch (err) {
+      logger.error(`${logPrefix} 渲染新增列表失败: ${err.message}`)
+      await e.reply(`列表渲染失败：${err.message}`)
+    } finally {
+      if (loc) unlinkQuietly(loc)
+    }
+    return true
   }
 }

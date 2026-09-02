@@ -146,6 +146,44 @@ export function supportGuoba () {
         },
         {
           component: 'Divider',
+          label: '新玩法'
+        },
+        {
+          field: 'nestMaxSteps',
+          label: '套娃最多叠几层',
+          bottomHelpMessage: '#套娃 的层数上限。写死最多 5 —— 动图一层就放大不少，再多叠发不出去、生成也慢',
+          component: 'InputNumber',
+          componentProps: { min: 1, max: 5 }
+        },
+        {
+          field: 'nestMaxSize',
+          label: '套娃单层体积上限(MB)',
+          bottomHelpMessage: '套娃过程中任何一层成品超过这个大小就停手，已叠好的照发。实测动图链第三层能到 6.7MB',
+          component: 'InputNumber',
+          componentProps: { min: 1, max: 20 }
+        },
+        {
+          field: 'crowdCount',
+          label: '全群暴击人数',
+          bottomHelpMessage: '#全群摸头 随机抽几个群友。上限 9 —— QQ 气泡里 8 格已是「名字还读得清」的边界',
+          component: 'InputNumber',
+          componentProps: { min: 2, max: 9 }
+        },
+        {
+          field: 'enableGuess',
+          label: '启用猜表情',
+          bottomHelpMessage: '#猜表情 出图让群友猜表情名。关掉后答题监听也一起停（它要拦每条群消息，不玩请关）',
+          component: 'Switch'
+        },
+        {
+          field: 'guessTimeout',
+          label: '猜表情时限(秒)',
+          bottomHelpMessage: '一局的时限，超时出提示公布答案',
+          component: 'InputNumber',
+          componentProps: { min: 10, max: 300 }
+        },
+        {
+          component: 'Divider',
           label: '黑名单 / 群开关'
         },
         {

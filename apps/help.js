@@ -95,6 +95,12 @@ export class memeHelp extends plugin {
       lines.push('             也能 #抽个cp @张三（另一位随机）或 @ 两个人')
       lines.push('  #整活 @某人 —— 拿他头像连出好几个表情，合并转发发原图')
       lines.push('                 动图也能动；想拼成一张图看就关掉配置 comboForward')
+      lines.push('  #套娃 摸头 踩 恐龙 @某人 —— 头像套进第一个表情，成品再套下一个')
+      lines.push('                 不写点名就随机叠；最多叠 3 层（配置 nestMaxSteps）')
+      lines.push('  #全群摸头 —— 同一表情随机抽几个群友，拼一张合影')
+      lines.push('  #今日表情 —— 同一天永远是同一个表情 + 一句今日运势')
+      lines.push('  #猜表情 —— 出一张用你头像做的表情，60 秒内说出名字得一分')
+      lines.push('             #猜表情排行 看本群榜，加「总」看全服榜')
     }
     lines.push('')
     lines.push(`目前共 ${MemeIndex.memeCount} 个表情 / ${MemeIndex.keywordCount} 个关键词`)
