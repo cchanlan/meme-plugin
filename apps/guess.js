@@ -2,10 +2,12 @@ import Config from '../model/config.js'
 import MemeIndex from '../model/memeIndex.js'
 import Stats from '../model/stats.js'
 import GuessGame from '../model/guessGame.js'
-import { avatarBuffer, makeOne, nameOf, replyImage } from '../utils/memeMake.js'
+import { avatarBuffer, makeOne, replyImage } from '../utils/memeMake.js'
 import { safePool, pickSome, dropProtectedIfMaster } from '../utils/funPool.js'
+import { renderGuessRank } from '../utils/guessImage.js'
+import { unlinkQuietly } from '../utils/file.js'
 import { blocked, emptyIndexTip } from '../utils/guard.js'
-import { getMemberInfo, groupNameOf } from '../utils/user.js'
+import { getMemberInfo, groupNameOf, getGroupName, getGroupNames } from '../utils/user.js'
 import { logPrefix } from '../constants/path.js'
 
 /**
@@ -177,10 +179,14 @@ export class memeGuess extends plugin {
     return true
   }
 
-  /** 纯文字榜：本群前 10，带「总」看跨群 */
+  /**
+   * 猜表情榜。出图，失败退回纯文字（同 #meme排行 的做法）。
+   * 本群榜 / 加「总」看跨群。
+   */
   async ranking (e) {
     if (blocked(e)) return false
-    const total = /总|全服|全部|全局/.test(e.msg)
+    // 私聊没有「本群」可排，直接给总榜，省得回一句「请在群里发」把人堵住
+    const total = /总|全服|全部|全局/.test(e.msg) || !e.group_id
     const s = total
       ? GuessGame.summary(10)
       : GuessGame.groupSummary(e.group_id, 10)
@@ -192,36 +198,53 @@ export class memeGuess extends plugin {
       return true
     }
 
-    // 死路：私聊发 #猜表情排行 没有群可看，改成看自己总共猜对几次
-    if (!e.group_id) {
-      const mine = GuessGame.userScore(e.group_id, e.user_id)
-      await e.reply(`你总共猜对过 ${mine} 次~ 想知道全服谁最能猜，发 #猜表情总排行 看看`)
-      return true
-    }
-
+    const extra = { scope: total ? 'total' : 'group' }
     if (total) {
-      const lines = [
-        '🏆 猜表情总榜',
-        `共 ${s.total} 次答对 · ${s.userCount} 人参与`,
-        '',
-        ...s.users.map((u, i) => `${i + 1}. ${u.name || u.key} ${u.n}分`)
-      ]
-      if (s.groups.length) {
-        lines.push('', `最能猜的群：${s.groups.slice(0, 3).map(g => g.name || g.key).join('、')}`)
+      // 榜上要显示真群名。存过的直接用，缺的问一次适配器
+      const missing = s.groups.filter(g => !g.name).map(g => g.key)
+      if (missing.length) {
+        try {
+          extra.groupNames = await getGroupNames(e, missing)
+        } catch (err) {
+          logger.debug(`${logPrefix} 补群名失败：${err.message}`)
+        }
       }
-      await e.reply(lines.join('\n'))
+    } else {
+      // 群名：事件里现成的最省事，没有再问适配器要一次
+      s.groupName = groupNameOf(e) || s.groupName || await getGroupName(e, e.group_id)
+    }
+
+    let loc = null
+    try {
+      loc = await renderGuessRank(s, extra)
+    } catch (err) {
+      logger.error(`${logPrefix} 猜表情榜渲染失败：${err.message}`)
+    }
+    if (loc) {
+      await e.reply(segment.image(`file://${loc}`))
+      unlinkQuietly(loc)
       return true
     }
 
-    const groupName = s.groupName || '本群'
-    const lines = [
-      `🏆 ${groupName} 猜表情排行`,
-      `共答对 ${s.total} 次 · ${s.userCount} 人参与`,
-      '',
-      ...s.users.map((u, i) => `${i + 1}. ${u.name || u.key} ${u.n}分`),
-      '',
-      '发 #猜表情 开一局，发 #猜表情总排行 看全服榜'
-    ]
+    // 出图失败（缺 puppeteer / 内存不足）退回纯文字，功能不受影响
+    const lines = total
+      ? [
+          '🏆 猜表情总榜',
+          `共 ${s.total} 次答对 · ${s.userCount} 人参与`,
+          '',
+          ...s.users.map((u, i) => `${i + 1}. ${u.name || u.key} ${u.n}分`)
+        ]
+      : [
+          `🏆 ${s.groupName || '本群'} 猜表情排行`,
+          `共答对 ${s.total} 次 · ${s.userCount} 人参与`,
+          '',
+          ...s.users.map((u, i) => `${i + 1}. ${u.name || u.key} ${u.n}分`),
+          '',
+          '发 #猜表情 开一局，发 #猜表情总排行 看全服榜'
+        ]
+    if (total && s.groups.length) {
+      lines.push('', `最能猜的群：${s.groups.slice(0, 3).map(g => g.name || g.key).join('、')}`)
+    }
     await e.reply(lines.join('\n'))
     return true
   }

@@ -384,30 +384,34 @@ export class memeFun extends plugin {
 
     // 中途收手的原因（体积到顶、某层失败）单独一句说清，不混进图里
     const tip = stopped ? `（${stopped}）` : ''
-    const title = `🎪 ${who} 的套娃现场`
+
+    // 一条消息里按顺序发原图 + 每一层的成品，动图能动。
+    //
+    // **不用合并转发**：实测转发一条塞 4 张图（3 张是 GIF）时，协议端要逐张
+    // 上传转码，`e.reply` 一等就是 4 分多钟，而且**后面几个节点会丢图** ——
+    // 群里看到的是「#你这家伙」「#交个朋友」只有标题没有画面。
+    // 同样张数用一条普通消息发（#全群摸头 那条路）只要 3~5 秒、一张不丢。
     const locs = []
     try {
       ensureDir('result')
-      // 节点顺序就是演变过程：原头像 → 第1层 → 第2层 → …
+      const parts = []
       const srcLoc = dataPath('result', uniqueName('jpg'))
       fs.writeFileSync(srcLoc, buffer)
       locs.push(srcLoc)
-      const chain = [
-        ['原图\n', segment.image(`file://${srcLoc}`)],
-        ...steps.map(s => {
-          const loc = dataPath('result', uniqueName(s.contentType.split('/')[1] || 'gif'))
-          fs.writeFileSync(loc, s.buffer)
-          locs.push(loc)
-          return [`#${nameOf(s.code)}\n`, segment.image(`file://${loc}`)]
-        })
-      ]
-      const common = (await import('../../../lib/common/common.js')).default
-      const forward = await common.makeForwardMsg(e, chain, title)
-      await e.reply(forward)
-      if (tip) await e.reply(tip)
+      parts.push(segment.image(`file://${srcLoc}`))
+      for (const s of steps) {
+        const loc = dataPath('result', uniqueName(s.contentType.split('/')[1] || 'gif'))
+        fs.writeFileSync(loc, s.buffer)
+        locs.push(loc)
+        parts.push(segment.image(`file://${loc}`))
+      }
+      // 文案放最后：图先出来，说明跟在底下。链条用箭头串起来，
+      // 对着上面图片的顺序就知道哪张是哪一层
+      parts.push(`🎪 ${who} 的套娃：原图 → ${steps.map(s => '#' + nameOf(s.code)).join(' → ')}${tip}`)
+      await e.reply(parts)
     } catch (err) {
-      logger.error(`${logPrefix} 套娃合并转发失败: ${err.message}`)
-      // 转发这条路挂了就退回最后一张成品
+      logger.error(`${logPrefix} 套娃发图失败: ${err.message}`)
+      // 整条发不出去（图加起来太大）就只给最后一张成品
       await replyImage(e, steps[steps.length - 1].buffer,
         `叠了 ${steps.length} 层：${steps.map(s => '#' + nameOf(s.code)).join(' → ')}${tip}`,
         steps[steps.length - 1].contentType)

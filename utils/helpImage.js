@@ -27,11 +27,11 @@ ${rows.map(([cmd, desc]) => `<div class="row">
 </section>`
 }
 
-/** 纯文字提示卡片，用来填左列底部的空位 —— 两列行数不等，不填会空一大块 */
+/** 纯文字提示卡片。横跨两栏摆在最底下，所以里面的条目自己再分两列 */
 function tipBlock (icon, title, lines) {
   return `<section class="blk pink tips">
 <h2><span class="ic">${icon}</span>${esc(title)}</h2>
-${lines.map(t => `<div class="tr">${esc(t)}</div>`).join('')}
+<div class="tlist">${lines.map(t => `<div class="tr">${esc(t)}</div>`).join('')}</div>
 </section>`
 }
 
@@ -44,7 +44,20 @@ body { position: relative; width: 900px; padding: 24px 26px 20px; }
 .hd .sakura { font-size: 30px; filter: drop-shadow(0 3px 6px rgba(226, 150, 184, .38)); }
 .line { position: relative; height: 3px; margin: 12px 0 18px; border-radius: 999px;
   background: linear-gradient(112deg, #f79ac0 0%, #d3b0f2 34%, #b6c8f5 66%, #96c5fa 100%); opacity: .8; }
-.cols { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+/*
+ * 两栏对齐：.cols 里放**四个平铺的卡片**，靠 grid 自己按行对齐 ——
+ * 原来是每栏套一个 div、卡片在里面纵向堆叠，两栏的第 N 块起始高度
+ * 取决于上一块有几行，行数不等就必然错位（左栏 8 行、右栏 9 行，
+ * 第二块就差出一行的高度，第三块差得更多）。
+ *
+ * grid 的行高由「同一行里最高的那个」决定，所以两块的顶边和底边都是齐的。
+ * 代价是每行两块必须等高、短的那块底部会留白，但边框对齐比省几十像素重要。
+ * 小贴士单独横跨两栏摆最后，里面的条目自己分两列，不然它一块顶太高。
+ */
+.cols { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: stretch; }
+.cols > .blk { margin-top: 0; }
+.cols > .tips { grid-column: 1 / -1; }
+.tips .tlist { display: grid; grid-template-columns: 1fr 1fr; gap: 0 22px; }
 /* 三个色系各管一类指令：粉=做表情、蓝=找表情、紫=管理，
    靠色相区分卡片，就不用把颜色加深来拉层次 */
 .blk {
@@ -163,8 +176,7 @@ export async function renderHelp (info = {}) {
 </div>
 <div class="line"></div>
 <div class="cols">
-  <div>${make}${play}${tips}</div>
-  <div>${find}${admin}</div>
+${make}${find}${play}${admin}${tips}
 </div>
 ${web ? `<div class="ft">🌟 <b>在线预览</b>　${esc(web)}　—— 看图挑表情，点一下复制指令${canMake ? '，还能直接在线出图' : ''}</div>` : ''}
 <div class="tip">指令前缀 # 可在配置里关掉 · 表情名支持全部别名</div>
