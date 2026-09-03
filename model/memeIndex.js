@@ -144,7 +144,9 @@ const MemeIndex = {
     rebuildIndex()
     const added = Object.keys(keyMap).filter(k => !(k in oldKeyMap))
     // 记下「本机第一次见到」的时间。服务端给的日期是作者标的，跟装机时间无关，
-    // 光靠它排序会让刚拉到的表情沉在下面（实测新表情只排到第 26 位）
+    // 光靠它排序会让刚拉到的表情沉在下面（实测新表情只排到第 26 位）。
+    // 先丢掉仓库扫描缓存 —— 刚 git pull 下来的新目录得重新扫一遍才看得到
+    FirstSeen.invalidate()
     const addedCodes = FirstSeen.sync(Object.keys(infos), !FirstSeen.exists())
     logger.mark(`${logPrefix} 索引已刷新：${this.memeCount} 个表情 / ${this.keywordCount} 个关键词`)
     return { count: this.memeCount, keywordCount: this.keywordCount, added, addedCodes, failed }
