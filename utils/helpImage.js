@@ -106,7 +106,9 @@ em { font-size: 15px; font-style: normal; color: #6d5b66; }
  * @returns {Promise<string>} 图片路径
  */
 export async function renderHelp (info = {}) {
-  const { total = 0, keywords = 0, web = null, canMake = false, local = true, fun = true } = info
+  // canMake（网页能不能在线生成）现在图里不提了 —— 底部胶囊只留链接。
+  // 仍保留在入参里：apps/help.js 出图失败时的纯文字兜底还要用同一份 info
+  const { total = 0, keywords = 0, web = null, local = true, fun = true } = info
 
   const make = block('🎨', '做表情', [
     ['#摸头', '用自己头像'],
@@ -180,7 +182,7 @@ export async function renderHelp (info = {}) {
 <div class="cols">
 ${make}${find}${play}${admin}${tips}
 </div>
-${web ? `<div class="ft">🌟 <b>在线预览</b>　${esc(web)}　—— 看图挑表情，点一下复制指令${canMake ? '，还能直接在线出图' : ''}</div>` : ''}
+${web ? `<div class="ft">🌟 <b>在线预览</b>　${esc(web)}</div>` : ''}
 <div class="tip">指令前缀 # 可在配置里关掉 · 表情名支持全部别名</div>
 </body></html>`
 
