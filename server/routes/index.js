@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import crypto from 'node:crypto'
 import Config from '../../model/config.js'
 import MemeIndex from '../../model/memeIndex.js'
 import Preview from '../../model/preview.js'
@@ -47,13 +48,16 @@ async function getStatic (req, res, urlObj) {
   res.end(fs.readFileSync(file))
 }
 
-/** 表情元数据 */
+/**
+ * 表情元数据。
+ *
+ * 原来挂 `max-age=300` 的固定缓存：`#meme更新` 之后 5 分钟内打开站，
+ * 浏览器直接吃本地副本，新表情看不见 —— 「更新完了站上还是旧的」就是这么来的。
+ * 改成按内容算 ETag + `no-cache`：每次都问一次服务器，
+ * 内容没变就回 304（几十字节），变了才传那 170KB。既不会看到旧数据，也不白传。
+ */
 async function getData (req, res) {
-  res.writeHead(200, {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Cache-Control': 'public, max-age=300'
-  })
-  res.end(JSON.stringify({
+  const body = JSON.stringify({
     total: MemeIndex.memeCount,
     keywords: MemeIndex.keywordCount,
     // 前端要据此决定显不显示「在线生成」那一块
@@ -61,7 +65,21 @@ async function getData (req, res) {
     maxFileSize: Config.get('maxFileSize') || 10,
     tags: MemeIndex.getTags(),
     memes: MemeIndex.toWebData()
-  }))
+  })
+  const etag = `W/"${crypto.createHash('md5').update(body).digest('hex').slice(0, 16)}"`
+
+  if (req.headers['if-none-match'] === etag) {
+    res.writeHead(304, { ETag: etag, 'Cache-Control': 'no-cache' })
+    res.end()
+    return
+  }
+  res.writeHead(200, {
+    'Content-Type': 'application/json; charset=utf-8',
+    ETag: etag,
+    // no-cache ≠ 不缓存：允许存，但每次用前必须回源验证（靠上面的 ETag 拿 304）
+    'Cache-Control': 'no-cache'
+  })
+  res.end(body)
 }
 
 /**

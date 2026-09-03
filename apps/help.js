@@ -83,9 +83,11 @@ export class memeHelp extends plugin {
       if (canMake) lines.push('     也能在网页里传图、填字，直接生成保存')
     }
     lines.push('  #meme搜索 关键词 —— 出预览图，支持按分类搜')
-    lines.push('  #meme列表 —— 分页看全部（每页 24 个，带预览图）')
+    lines.push('  #meme列表 —— 随机翻一页看（每页 24 个，带预览图）')
+    lines.push('              加页码看指定页，如 #meme列表 3')
     lines.push('  #meme分类 —— 按作品/系列看，如 #meme分类 鸣潮')
     lines.push('  #随机meme —— 随机来一个')
+    lines.push('  #meme新增 —— 最近装上的表情排前面')
     lines.push('  #meme排行 —— 本群榜：本群谁最能整活、哪个表情最火')
     lines.push('  #meme总排行 —— 所有群一起排，还有最活跃的群')
     if (fun) {

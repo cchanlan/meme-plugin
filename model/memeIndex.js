@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import Config from './config.js'
 import MemeApi from './memeApi.js'
+import FirstSeen from './firstSeen.js'
 import { dataPath } from '../utils/file.js'
 import { logPrefix } from '../constants/path.js'
 import { argSchemas } from '../utils/args.js'
@@ -79,6 +80,12 @@ const MemeIndex = {
       infos = {}
     }
     rebuildIndex()
+    // 首见记录跟着索引一起对账。这里是「首次建立」的唯一入口：
+    // 老用户第一次跑到这儿时文件还不存在，全部记 0 让排序回退到作者日期，
+    // 不能把已有的 900 多个表情都标成「今天刚见到」
+    if (sortedKeys.length) {
+      FirstSeen.sync(Object.keys(infos), !FirstSeen.exists())
+    }
     return sortedKeys.length
   },
 
@@ -112,7 +119,7 @@ const MemeIndex = {
    * 从服务端拉取最新数据并写盘。
    * meme-generator 只在进程启动时扫描 meme_dirs，所以调用方要先重启 meme 服务；
    * 而这里刷的是 Yunzai 侧的第二层缓存 —— 两层都刷了新表情才真能用。
-   * @returns {Promise<{count:number, keywordCount:number, added:string[]}>}
+   * @returns {Promise<{count:number, keywordCount:number, added:string[], addedCodes:string[]}>}
    */
   async refreshFromApi () {
     const oldKeyMap = { ...keyMap }
@@ -136,8 +143,25 @@ const MemeIndex = {
     fs.writeFileSync(INFOS_FILE(), JSON.stringify(infos))
     rebuildIndex()
     const added = Object.keys(keyMap).filter(k => !(k in oldKeyMap))
+    // 记下「本机第一次见到」的时间。服务端给的日期是作者标的，跟装机时间无关，
+    // 光靠它排序会让刚拉到的表情沉在下面（实测新表情只排到第 26 位）
+    const addedCodes = FirstSeen.sync(Object.keys(infos), !FirstSeen.exists())
     logger.mark(`${logPrefix} 索引已刷新：${this.memeCount} 个表情 / ${this.keywordCount} 个关键词`)
-    return { count: this.memeCount, keywordCount: this.keywordCount, added, failed }
+    return { count: this.memeCount, keywordCount: this.keywordCount, added, addedCodes, failed }
+  },
+
+  /**
+   * 按「最近才有的」排前面。
+   *
+   * 排序键优先用本机首见时间，缺了才回退作者标注的日期 —— 详见 model/firstSeen.js。
+   * @param {number} limit 取前几个，不给就全部
+   */
+  recentCodes (limit) {
+    const list = this.allCodes()
+      .map(code => ({ code, t: FirstSeen.sortKey(code, infos[code]) }))
+      .sort((a, b) => b.t - a.t)
+      .map(x => x.code)
+    return limit > 0 ? list.slice(0, limit) : list
   },
 
   /**
@@ -246,16 +270,12 @@ const MemeIndex = {
   /** 给 web 前端用的精简元数据，按最近更新排前面 */
   toWebData () {
     const blocked = blockedCodes()
+    // 排序和 #meme新增 用同一套键：优先本机首见时间，缺了回退作者日期。
+    // 原来只比 date_modified 字符串，结果刚 #meme更新 拉到的表情
+    // （作者标的日期是几个月前）在站上沉到几十位之后，看着像「没更新成功」
     return Object.entries(infos)
       .filter(([code]) => !blocked.has(code))
-      // date_modified 是 "2024-11-22T00:00:00" 这种定长 ISO 串，字典序和时间序一致，
-      // 直接比字符串就行，不用把 944 条都 new Date 解析一遍。
-      // 老仓库有少数表情只有 date_created，回退用它；两个都缺的排最后
-      .sort((a, b) => {
-        const da = a[1].date_modified || a[1].date_created || ''
-        const db = b[1].date_modified || b[1].date_created || ''
-        return db < da ? -1 : (db > da ? 1 : 0)
-      })
+      .sort((a, b) => FirstSeen.sortKey(b[0], b[1]) - FirstSeen.sortKey(a[0], a[1]))
       .map(([code, info]) => {
       const pt = info.params_type || {}
       return {

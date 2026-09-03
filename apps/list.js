@@ -32,7 +32,9 @@ async function renderPage (codes, page, totalPages, cacheName) {
     }),
     {
       title: `表情包列表 · 第 ${page}/${totalPages} 页`,
-      footer: `共 ${MemeIndex.memeCount} 个表情　·　翻页：#meme列表 ${page < totalPages ? page + 1 : 1}`,
+      // 不写死「下一页」：不带页码时是随机翻的，指路「再发一次换一批」更贴合，
+      // 想按顺序看的人照样能自己指定页码
+      footer: `共 ${MemeIndex.memeCount} 个表情　·　再发一次换一批，或 #meme列表 ${page < totalPages ? page + 1 : 1} 看指定页`,
       out: loc
     }
   )
@@ -67,6 +69,13 @@ export class memeList extends plugin {
     })
   }
 
+  /**
+   * #meme列表 —— 不带页码时**每次随机翻一页**，带页码就看那一页。
+   *
+   * 原来不带页码恒定是第 1 页，944 个表情里永远只看得到同样那 24 个，
+   * 发第二次没有任何新东西。随机翻页让每次都有新面孔，
+   * 想按顺序看的人照样可以 `#meme列表 3`。
+   */
   async showList (e) {
     if (blocked(e)) return false
     if (MemeIndex.isEmpty) {
@@ -84,11 +93,16 @@ export class memeList extends plugin {
       return true
     }
     const m = /(\d+)\s*$/.exec(e.msg)
-    let page = m ? parseInt(m[1]) : 1
-    if (page < 1) page = 1
-    if (page > totalPages) {
-      await e.reply(`只有 ${totalPages} 页哦，第 ${page} 页不存在`)
-      return true
+    let page
+    if (m) {
+      page = parseInt(m[1])
+      if (page < 1) page = 1
+      if (page > totalPages) {
+        await e.reply(`只有 ${totalPages} 页哦，第 ${page} 页不存在`)
+        return true
+      }
+    } else {
+      page = _.random(1, totalPages)
     }
 
     const pageCodes = codes.slice((page - 1) * pageSize, page * pageSize)
@@ -200,12 +214,12 @@ export class memeList extends plugin {
   }
 
   /**
-   * #meme新增 —— 最新更新的几个表情。
+   * #meme新增 —— 最近才有的几个表情。
    *
-   * 每个表情的 info 里带着 date_modified / date_created（定长 ISO 字符串，
-   * 直接比字符串就是时间序，不用 new Date 解析 900 多遍），
-   * 但这一页除了这里没有任何地方用到。和 #meme更新 那条播报是互补关系：
-   * 播报只在更新那一刻出现一次，这条随时可查。
+   * 排序键交给 MemeIndex.recentCodes()：优先「本机第一次见到」的时间，
+   * 缺了才回退作者标注的日期。只比作者日期是不行的 —— 那是表情作者写的，
+   * 跟装机时间无关，实测某次更新拉到的新表情作者标着两个月前，
+   * 在按日期排的榜里只到第 26 位，前 24 名里根本看不见（详见 model/firstSeen.js）。
    */
   async recentNew (e) {
     if (blocked(e)) return false
@@ -216,20 +230,10 @@ export class memeList extends plugin {
 
     const m = /(\d+)\s*$/.exec(e.msg)
     const n = m ? _.clamp(parseInt(m[1]), 1, 40) : 24
-    // 按 date_modified（没有就回退 date_created）降序取前 n 个。
-    // infos 里带 date 的表情不到一半，老的没标日期的排最后
-    const codes = Object.entries(MemeIndex.infos)
-      .filter(([code]) => !MemeIndex.isBlocked(code))
-      .sort((a, b) => {
-        const da = a[1].date_modified || a[1].date_created || ''
-        const db = b[1].date_modified || b[1].date_created || ''
-        return db < da ? -1 : (db > da ? 1 : 0)
-      })
-      .slice(0, n)
-      .map(([code]) => code)
+    const codes = MemeIndex.recentCodes(n)
 
     if (!codes.length) {
-      await e.reply('索引里没有带日期信息的表情~')
+      await e.reply('能看的表情一个都没有了 —— 配置 blackMemes 把它们全拉黑了')
       return true
     }
 
@@ -243,7 +247,7 @@ export class memeList extends plugin {
         }),
         {
           title: `🆕 最新表情 · ${count} 个`,
-          footer: '日期是表情作者标注的，不代表装到本机的时间'
+          footer: '越靠前越新　·　刚装上的排最前面'
         }
       )
       await e.reply(segment.image(`file://${loc}`))
