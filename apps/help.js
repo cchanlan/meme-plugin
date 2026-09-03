@@ -46,13 +46,9 @@ export class memeHelp extends plugin {
     }
 
     if (loc) {
-      // 图里每条指令都印着了，文字只留图上办不到的那一件事：链接要能点
-      const text = []
-      if (web) text.push(`🌟 在线预览：${web}`)
-      if (canMake) text.push('（网页里还能直接传图在线生成）')
-      const parts = [segment.image(`file://${loc}`)]
-      if (text.length) parts.push(text.join('\n'))
-      await e.reply(parts)
+      // 只发图。图的底部已经印着在线预览的网址了，再单独发一行纯属重复
+      // （链接在文字里能点，但为此多刷一条消息不值得 —— 想访问的人照着图敲一次就行）
+      await e.reply(segment.image(`file://${loc}`))
       unlinkQuietly(loc)
       return true
     }
