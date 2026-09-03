@@ -55,7 +55,6 @@ body { position: relative; width: 900px; padding: 24px 26px 20px; }
  * 小贴士单独横跨两栏摆最后，里面的条目自己分两列，不然它一块顶太高。
  */
 .cols { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: stretch; }
-.cols > .blk { margin-top: 0; }
 .cols > .tips { grid-column: 1 / -1; }
 .tips .tlist { display: grid; grid-template-columns: 1fr 1fr; gap: 0 22px; }
 /* 三个色系各管一类指令：粉=做表情、蓝=找表情、紫=管理，
@@ -67,7 +66,10 @@ body { position: relative; width: 900px; padding: 24px 26px 20px; }
   border-radius: 20px;
   box-shadow: 0 2px 8px rgba(214, 158, 186, .10), 0 8px 20px rgba(160, 180, 225, .09);
 }
-.blk + .blk { margin-top: 16px; }
+/* 卡片之间的间距一律交给 .cols 的 gap。
+   原来这里有一条 .blk + .blk { margin-top: 16px }（纵向堆叠时代留下的），
+   卡片平铺进 grid 之后它会命中「除第一个以外的所有卡片」——
+   右上角那块凭空多出 16px 上边距，看着就是和左边没对齐。 */
 .blk.blue { border-color: #d3e6fd; }
 .blk.lilac { border-color: #e4d8fb; }
 .blk h2 { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 20px; font-weight: 800; color: #d96e97; }
