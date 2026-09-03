@@ -21,11 +21,23 @@ export class memeGuess extends plugin {
       name: 'meme猜表情',
       dsc: '看图猜表情名，答对得分',
       event: 'message',
-      // 要拦「每条消息」，必须在 memeMaker（5000）之前
-      priority: 4500,
+      /**
+       * 抢在所有插件之前。
+       *
+       * 答题的人打的是**表情名**，而表情名里混着一堆别的插件的指令词
+       * （实测撞车的有「摸鱼」「晚安」「疯狂星期四」「复读」，还有 64 个单字名
+       * 像「摸」「踩」「贴」）。放在 4500 的话，priority 更小的插件
+       * （大部分是 0~2000）会先把这句话抢走 —— 人猜对了却不算分，
+       * 还顺带触发了别人的功能。所以要最先判定：是答案就吃掉，不是就立刻放行。
+       *
+       * 代价是每条消息都先过一遍 answer()，所以那个函数里**第一步必须是同步查 Map**，
+       * 没有进行中的题目立刻 return false，不做任何 await。
+       */
+      priority: -2000,
       rule: [
         {
-          reg: '^#?猜表情(排行|榜单?)?$',
+          // 「总/全服/全部/全局」要放在「排行」前面才匹配得上 #猜表情总排行
+          reg: '^#?猜表情((总|全服|全部|全局)?(排行|统计|榜单?))?$',
           fnc: 'start'
         },
         {
@@ -49,10 +61,21 @@ export class memeGuess extends plugin {
     if (blocked(e)) return false
     if (!Config.get('enableGuess')) return false
     // 排行不带开关：猜都让玩了，凭什么不让看榜
-    if (/排行|榜单?/.test(e.msg)) return await this.ranking(e)
+    if (/排行|统计|榜单?/.test(e.msg)) return await this.ranking(e)
 
     if (MemeIndex.isEmpty) {
       await e.reply(emptyIndexTip())
+      return true
+    }
+
+    // 已经有一局在跑就别开新的：直接覆盖会把上一局的超时定时器留在那儿空转，
+    // 而且刚出的题还没人猜就被顶掉了
+    const running = GuessGame.current(e)
+    if (running) {
+      const left = Math.ceil(
+        ((parseInt(Config.get('guessTimeout')) || 60) * 1000 - (Date.now() - running.startedAt)) / 1000
+      )
+      await e.reply(`上一题还没猜出来呢~ 还有 ${Math.max(left, 1)} 秒`, true)
       return true
     }
 
@@ -119,16 +142,24 @@ export class memeGuess extends plugin {
   }
 
   /**
-   * 每条消息都会走到这里。没局在跑时必须**同步返回 false 放行** ——
-   * 这里是全插件最热的路，一点点 awaited 延迟都会拖慢所有别的指令。
+   * 每条消息都会走到这里 —— 全插件最热的路。
+   *
+   * 第一步必须是**同步查一次内存 Map**：没有进行中的题目就立刻 return false 放行，
+   * 不读配置、不做 await。只有确实在玩的那 60 秒里才会往下走。
+   *
+   * 判定成功时 return true 把这句话吃掉，别的插件就收不到了 —— 这是故意的：
+   * 表情名里混着一堆别人的指令词（「摸鱼」「晚安」「疯狂星期四」「复读」，
+   * 还有 64 个单字名），猜对的那句要是继续往下传，就会顺带触发别人的功能。
    */
   async answer (e) {
-    if (!Config.get('enableGuess')) return false
-
     const game = GuessGame.current(e)
     if (!game) return false
 
-    // 只把整句话当答案（前面顺手削掉可能带的 #）。
+    // 下面这几道才读配置：能开出局说明当时是允许的，但中途可能被拉黑/关群开关
+    if (!Config.get('enableGuess')) return false
+    if (blocked(e)) return false
+
+    // 只把整句话当答案（顺手削掉可能带的 #）。
     // 不做「按空格切词逐个试」——那样随便聊天蒙中的概率太高，猜对就不值钱了
     const msg = String(e.msg || '').replace(/^#/, '').trim()
     if (!GuessGame.isAnswer(game, msg)) return false

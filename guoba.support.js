@@ -164,7 +164,7 @@ export function supportGuoba () {
         },
         {
           field: 'crowdCount',
-          label: '全群暴击人数',
+          label: '全员表情人数',
           bottomHelpMessage: '#全群摸头 随机抽几个群友，结果一条消息里发原图（动图能动）。上限 9',
           component: 'InputNumber',
           componentProps: { min: 2, max: 9 }

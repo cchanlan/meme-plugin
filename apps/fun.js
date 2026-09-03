@@ -494,15 +494,18 @@ export class memeFun extends plugin {
     const locs = []
     try {
       ensureDir('result')
-      // 名字按 picked 的顺序列（并发生成，顺序和抽人时不一定一致），
-      // 这样文字里的排列和下面图片的排列是对得上的
-      const parts = [`🎪 全员#${keyword}　·　${picked.map(p => _.truncate(p.name, { length: 8 })).join('、')}`]
+      // 文案放**最后**：图先出来，说明跟在底下。放开头会把图挤到下面去，
+      // 手机上先看到一行字才滚到图，节奏不对
+      const parts = []
       for (const p of picked) {
         const loc = dataPath('result', uniqueName(p.contentType.split('/')[1] || 'gif'))
         fs.writeFileSync(loc, p.buffer)
         locs.push(loc)
         parts.push(segment.image(`file://${loc}`))
       }
+      // 名字按 picked 的顺序列（并发生成，顺序和抽人时不一定一致），
+      // 这样文字里的排列和上面图片的排列是对得上的
+      parts.push(`🎪 全员#${keyword}　·　${picked.map(p => _.truncate(p.name, { length: 8 })).join('、')}`)
       await e.reply(parts)
     } catch (err) {
       // 发不出去多半是图加起来太大（实测单张最大约 680KB，6 张 4MB），
