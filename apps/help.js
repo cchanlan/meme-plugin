@@ -97,12 +97,16 @@ export class memeHelp extends plugin {
       lines.push('             也能 #抽个cp @张三（另一位随机）或 @ 两个人')
       lines.push('  #整活 @某人 —— 拿他头像连出好几个表情，合并转发发原图')
       lines.push('                 动图也能动；想拼成一张图看就关掉配置 comboForward')
+      lines.push('                 也可以发 #表情轰炸')
       lines.push('  #套娃 摸头 踩 恐龙 @某人 —— 头像套进第一个表情，成品再套下一个')
-      lines.push('                 不写点名就随机叠，会自动挑动图；最多 3 层（配置 nestMaxSteps）')
+      lines.push('                 不写点名就随机叠（#随机套娃 同效），会自动挑动图')
+      lines.push('                 最多 3 层（配置 nestMaxSteps）')
       lines.push('  #全群摸头 —— 同一表情随机抽几个群友，一条消息全发出来')
+      lines.push('               #全员摸头、#全体摸头 同效')
       lines.push('  #今日表情 —— 同一天永远是同一个表情 + 一句今日运势')
+      lines.push('               #今日运势、#每日表情 同效')
       lines.push('  #猜表情 —— 出一张用你头像做的表情，60 秒内说出名字得一分')
-      lines.push('             #猜表情排行 看本群榜，加「总」看全服榜')
+      lines.push('  #猜表情排行 —— 本群猜对榜；#猜表情总排行 看跨群总榜')
     }
     lines.push('')
     lines.push(`目前共 ${MemeIndex.memeCount} 个表情 / ${MemeIndex.keywordCount} 个关键词`)
@@ -114,14 +118,17 @@ export class memeHelp extends plugin {
     lines.push(local
       ? '  #meme更新 —— 拉取新表情（会自动重启服务+刷新索引）'
       : '  #meme更新 —— 同步服务方的新表情（外部服务，只刷索引）')
-    lines.push('  #meme刷新 —— 只重建索引，不动仓库')
+    lines.push('  #meme刷新 —— 只重建索引，不动仓库（#meme重载 同效）')
     lines.push('  #meme部署状态 —— 查看服务健康度')
     lines.push('  #meme清缓存 —— 清空预览图/缩略图缓存')
     lines.push('  #meme清空统计 —— 排行榜清零重来')
     lines.push('  #meme插件更新 —— 更新插件本体（和 #meme更新 不是一回事）')
     lines.push('                   改到代码会自动重启，加「不重启」可以不重启')
     lines.push('  #meme版本 —— 看当前版本，并检查远端有没有新的')
-    if (local) lines.push('  #meme部署 —— 可选：在本机装一套 meme 服务')
+    if (local) {
+      lines.push('  #meme部署 —— 可选：在本机装一套 meme 服务')
+      lines.push('  #meme卸载 —— 卸掉本机的 meme 服务（会先列清单让你确认）')
+    }
     return lines.join('\n')
   }
 }
