@@ -246,6 +246,17 @@ export function supportGuoba () {
         },
         {
           component: 'Divider',
+          label: '出图浏览器'
+        },
+        {
+          field: 'browserIdleSec',
+          label: '浏览器空闲关闭(秒)',
+          bottomHelpMessage: '出完图空闲这么久就关掉 Chromium，省下 200MB+ 内存；0 为每张出完立刻关，但每次出图要多等 1~2 秒启动',
+          component: 'InputNumber',
+          componentProps: { min: 0, max: 3600 }
+        },
+        {
+          component: 'Divider',
           label: 'Web 预览站'
         },
         {

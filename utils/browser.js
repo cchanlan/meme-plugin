@@ -3,13 +3,20 @@
  *
  * 搜索网格图和帮助图都要出图，各自 launch 一次会白占一份 Chromium 内存，
  * 所以放到这里共用一个实例。
+ *
+ * 实例不是永久留着的：出图任务全跑完之后按 browserIdleSec 计时关掉，
+ * 免得没人玩表情的时候还挂着一份 200MB+ 的 Chromium。
  */
 
 import process from 'node:process'
+import Config from '../model/config.js'
 
 let browserPromise = null
 /** 当前实例，用来判断 disconnected 事件是不是「现役」那一个发出来的 */
 let current = null
+/** 正在出图的任务数。>0 时不能关浏览器，否则会把别人正用的实例拽掉 */
+let activeTasks = 0
+let idleTimer = null
 
 /**
  * 宿主配了 chromium 路径就用它。puppeteer 自带的 Chromium 常常没下载成功
@@ -43,12 +50,20 @@ async function doLaunch () {
     if (current === b) {
       current = null
       browserPromise = null
+      // 实例已经没了，待关闭的定时器留着也没意义
+      cancelIdleClose()
     }
   })
   return b
 }
 
-/** 取浏览器，实例复用；已断开则重新 launch */
+/**
+ * 取浏览器，实例复用；已断开则重新 launch。
+ *
+ * 这里刻意不碰空闲定时器 —— 谁开的任务谁负责配平计数，否则一次
+ * 不走 shotHtml 的调用就能把浏览器变成永久常驻。要长时间占着实例
+ * 就照 shotHtml 那样自己 activeTasks++ / -- 再 scheduleIdleClose()。
+ */
 export async function getBrowser () {
   if (browserPromise) {
     try {
@@ -65,6 +80,7 @@ export async function getBrowser () {
 }
 
 export async function closeBrowser () {
+  cancelIdleClose()
   if (!browserPromise) return
   const p = browserPromise
   browserPromise = null
@@ -73,6 +89,43 @@ export async function closeBrowser () {
     const b = await p
     await b.close()
   } catch {}
+}
+
+/**
+ * 出图完成后再空闲多久就关掉浏览器（秒），0 表示每张图出完立刻关。
+ *
+ * 一份 Chromium 常驻要 200MB+，而出图是「一阵一阵」的：没人发指令时留着纯属白占。
+ * 反过来每张都关又要重付一次启动开销（实测 1~2 秒），连发几个表情、
+ * 榜单图紧跟搜索图这种连续场景会被拖慢，所以默认留一小段空闲窗口。
+ */
+function idleCloseMs () {
+  const sec = Number(Config.get('browserIdleSec'))
+  return Number.isFinite(sec) && sec >= 0 ? sec * 1000 : 60000
+}
+
+function cancelIdleClose () {
+  if (idleTimer) {
+    clearTimeout(idleTimer)
+    idleTimer = null
+  }
+}
+
+/** 没有在跑的出图任务了，安排把浏览器关掉 */
+function scheduleIdleClose () {
+  cancelIdleClose()
+  if (activeTasks > 0) return
+  const ms = idleCloseMs()
+  if (ms === 0) {
+    closeBrowser()
+    return
+  }
+  idleTimer = setTimeout(() => {
+    idleTimer = null
+    // 排上定时器之后又来了新任务，就不能关
+    if (activeTasks === 0) closeBrowser()
+  }, ms)
+  // 这个定时器不该拖着 Node 不让退出
+  idleTimer.unref?.()
 }
 
 /**
@@ -111,6 +164,8 @@ async function getSharp () {
  *
  * loc 的扩展名由调用方保证与 format 一致（用 IMG_EXT），这里不改路径。
  *
+ * 出图完了浏览器不会一直留着：并发的任务都结束后按 browserIdleSec 计时关掉。
+ *
  * @param {string} html 完整 HTML
  * @param {string} loc 输出路径
  * @param {{width:number, scale?:number, quality?:number, format?:'jpeg'|'webp'}} opts
@@ -118,9 +173,13 @@ async function getSharp () {
  */
 export async function shotHtml (html, loc, opts = {}) {
   const { width, scale = 2, quality = IMG_QUALITY, format = IMG_FORMAT } = opts
-  const browser = await getBrowser()
-  const page = await browser.newPage()
+  activeTasks++
+  // 先撤掉待关闭的定时器：不然它可能正好在这张图用实例的当口把浏览器关了
+  cancelIdleClose()
+  let page = null
   try {
+    const browser = await getBrowser()
+    page = await browser.newPage()
     await page.setViewport({ width, height: 200, deviceScaleFactor: scale })
     await page.setContent(html, { waitUntil: 'load', timeout: 60000 })
     const body = await page.$('body')
@@ -138,7 +197,10 @@ export async function shotHtml (html, loc, opts = {}) {
     ).toFile(loc)
     return loc
   } finally {
-    await page.close().catch(() => {})
+    if (page) await page.close().catch(() => {})
+    activeTasks--
+    // launch 或 newPage 就失败时也要走到这里，否则计数配不平、浏览器再没人关
+    scheduleIdleClose()
   }
 }
 

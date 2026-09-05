@@ -112,8 +112,9 @@ git clone --depth=1 https://gitcode.com/ccxhan/meme-plugin.git ./plugins/meme-pl
 | `enableGuess` / `guessTimeout` | `true` / `60` | 猜表情开关、一局时限（秒） |
 | `masterProtect` | `true` | 撅主人会被反撅 |
 | `blackUsers` / `blackMemes` | 空 | 拉黑的人 / 表情 |
+| `browserIdleSec` | `60` | 出图的 Chromium 空闲几秒就关掉，省内存；`0` 为每张出完立刻关 |
 
-其余（超时、分页数、预览数量等）见 `config/default_config.yaml`，都有中文注释。
+其余（超时、分页数、预览数量等）见 `config/system/config.yaml`，都有中文注释。
 
 ## 出问题先看这几条
 
