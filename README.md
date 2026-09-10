@@ -17,11 +17,21 @@
 
 ## 装起来
 
-**① 下载插件** —— 在云崽根目录执行
+**① 下载插件** —— 在云崽根目录执行，三个源任选一个（内容完全一样，推荐国内的）
 
+**gitcode（国内直连最快）**
 ```bash
 git clone --depth=1 https://gitcode.com/ccxhan/meme-plugin.git ./plugins/meme-plugin
-# GitHub 也行：https://github.com/cchanlan/meme-plugin.git
+```
+
+**gitee（国内）**
+```bash
+git clone --depth=1 https://gitee.com/longhengmu/meme-plugin.git ./plugins/meme-plugin
+```
+
+**GitHub**
+```bash
+git clone --depth=1 https://github.com/cchanlan/meme-plugin.git ./plugins/meme-plugin
 ```
 
 重启即可，**不用装依赖**（用的都是 Yunzai 自带的）。
