@@ -6,7 +6,7 @@ import MemeIndex from '../model/memeIndex.js'
 import Preview from '../model/preview.js'
 import { logPrefix } from '../constants/path.js'
 import { mkdirs } from '../utils/file.js'
-import { syncMemeDirs, reposRoot } from '../utils/memeDirs.js'
+import { syncMemeDirs, reposRoot, tomlPath, venvMemePath } from '../utils/memeDirs.js'
 import { clearImageCaches } from '../utils/cleanup.js'
 import { pm2 } from '../utils/pm2.js'
 import { git } from '../utils/git.js'
@@ -134,6 +134,23 @@ export class memeUpdate extends plugin {
         '（如果 meme 服务其实就在这台机器上、想让插件接管资源，把配置 serviceMode 改成 local）'
       )
       return this.reloadOnly(e, true)
+    }
+
+    // 服务压根没在这台机器上装过时，下面那一整套（克隆几个 G 的仓库 → 写 meme_dirs
+    // → 重启 pm2）没有一步能生效：没有人会去读拉下来的目录，纯占磁盘，还要等十几分钟。
+    // 所以先确认「确实有个本机服务等着喂」，没有就直接指路 #meme部署。
+    //
+    // 判据取三样全缺才算没装：服务连不通、config.toml 不在、venv 里没有 meme。
+    // 任一样在就说明装过（服务只是没起来 / 手动装的 / 在 docker 里但仓库挂到本机），
+    // 照旧走完整流程 —— 拦截宁松勿严，误伤「服务挂了想更新」比漏放几次严重得多。
+    if (!await MemeApi.ping() && !fs.existsSync(tomlPath()) && !fs.existsSync(venvMemePath())) {
+      await e.reply(
+        '❌ 这台机器上还没有 meme 服务，就不白下载几个 G 了\n' +
+        '#meme更新 只负责给已经装好的服务换表情资源\n\n' +
+        '👉 要装服务发 #meme部署（第一次要几分钟）\n' +
+        '👉 连的是别人的服务，把配置 memeApiUrl 改成那个地址，再发这个就能同步'
+      )
+      return true
     }
 
     const repos = Config.get('repos') || []

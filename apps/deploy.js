@@ -7,6 +7,7 @@ import MemeIndex from '../model/memeIndex.js'
 import { dataDir, pluginResources, logPrefix } from '../constants/path.js'
 import { encodedCommandArgv, cleanPsError, looksBlocked } from '../utils/psShell.js'
 import { pm2Bin, pm2Proc, resetPm2Cache } from '../utils/pm2.js'
+import { venvMemePath } from '../utils/memeDirs.js'
 import { beginTask, endTask, busyTip } from '../utils/lock.js'
 
 const IS_WIN = process.platform === 'win32'
@@ -77,13 +78,6 @@ function deployCommand (opts) {
     argv: [sh, dir, pm2Name, pipIndex, gitProxy, String(port)],
     named: []
   }
-}
-
-/** venv 里 meme 可执行文件的位置：Windows 放在 Scripts\ 且带 .exe */
-function venvMemePath () {
-  return IS_WIN
-    ? path.join(dataDir, 'venv', 'Scripts', 'meme.exe')
-    : path.join(dataDir, 'venv', 'bin', 'meme')
 }
 
 export class memeDeploy extends plugin {

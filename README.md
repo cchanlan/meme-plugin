@@ -83,7 +83,7 @@ git clone --depth=1 https://gitcode.com/ccxhan/meme-plugin.git ./plugins/meme-pl
 | 发什么 | 效果 |
 | --- | --- |
 | `#meme开启` / `#meme关闭` / `#meme开关` | 本群开关与当前状态 |
-| `#meme更新` | 拉新表情、必要时重启服务、刷新列表 |
+| `#meme更新` | 拉新表情、必要时重启服务、刷新列表（本机还没装服务时会拦下，提示去 `#meme部署`） |
 | `#meme刷新` / `#meme清缓存` | 只重建索引不动仓库（`#meme重载` 同效）/ 清出图缓存 |
 | `#meme插件更新` / `#meme版本` | 升级插件本体、看版本 |
 | `#meme部署` / `#meme部署状态` / `#meme卸载` | 装 / 查 / 卸画图服务 |

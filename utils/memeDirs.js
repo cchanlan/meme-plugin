@@ -37,6 +37,18 @@ export function tomlPath () {
   return path.join(dir, 'config.toml')
 }
 
+/**
+ * 一键部署装出来的 venv 里 meme 可执行文件的位置（Windows 在 Scripts\ 且带 .exe）。
+ *
+ * 放在这里共享：`#meme部署状态` 和 `#meme更新` 的「本机装没装过服务」判断都要用它，
+ * 各写一遍迟早改漏一个（同 reposRoot 那条教训）。
+ */
+export function venvMemePath () {
+  return process.platform === 'win32'
+    ? path.join(dataDir, 'venv', 'Scripts', 'meme.exe')
+    : path.join(dataDir, 'venv', 'bin', 'meme')
+}
+
 /** 仓库根目录：优先配置的 reposDir，否则插件数据目录 */
 export function reposRoot () {
   const custom = String(Config.get('reposDir') || '').trim()
