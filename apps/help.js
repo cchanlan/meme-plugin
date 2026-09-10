@@ -122,7 +122,7 @@ export class memeHelp extends plugin {
     lines.push('                   改到代码会自动重启，加「不重启」可以不重启')
     lines.push('  #meme版本 —— 看当前版本，并检查远端有没有新的')
     if (local) {
-      lines.push('  #meme部署 —— 可选：在本机装一套 meme 服务')
+      lines.push('  #meme部署 —— 可选：在本机装一套 meme 服务（会让你选 venv 还是 docker）')
       lines.push('  #meme卸载 —— 卸掉本机的 meme 服务（会先列清单让你确认）')
     }
     return lines.join('\n')

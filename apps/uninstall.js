@@ -7,6 +7,10 @@ import MemeIndex from '../model/memeIndex.js'
 import { dataDir, logPrefix } from '../constants/path.js'
 import { pm2, pm2Proc, pm2Bin, resetPm2Cache } from '../utils/pm2.js'
 import { tomlPath, reposRoot } from '../utils/memeDirs.js'
+import {
+  containerInfo, daemonState, docker, imageExists, imageName, isOurs,
+  resetDockerCache, LABEL_MANAGED
+} from '../utils/docker.js'
 import { clearImageCaches } from '../utils/cleanup.js'
 import { beginTask, endTask, busyTip } from '../utils/lock.js'
 
@@ -127,6 +131,17 @@ function materialDir () {
   return path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), app)
 }
 
+/** 「不是插件装的」具体是哪一条没满足 —— 报告里要写给人看，不能只说不删 */
+function oursReason (info, name) {
+  const why = []
+  if (info.name !== name) why.push(`容器名不是「${name}」`)
+  if (info.labels?.[LABEL_MANAGED] !== '1') why.push('没有插件的归属标记')
+  const dir = info.labels?.['meme-plugin.datadir']
+  if (dir && norm(dir) !== norm(dataDir)) why.push(`数据目录不是这台（${dir}）`)
+  if (!/meme-generator/i.test(String(info.image || '').split(':')[0])) why.push(`镜像不是 meme-generator（${info.image}）`)
+  return why.join('；') || '归属信息对不上'
+}
+
 /**
  * 只看，不动任何东西 —— 先把「要删什么、为什么不删」算清楚，
  * 未确认时原样展示给用户，确认后照着执行。
@@ -137,6 +152,7 @@ function makePlan () {
   const repoRoot = reposRoot()
   const cfgFile = tomlPath()
   const pm2Name = Config.get('deployPm2Name') || 'meme-plugin'
+  const dName = pm2Name   // docker 方式下这个值当容器名用（同一个「服务叫什么」）
 
   const plan = {
     pm2Name,
@@ -150,6 +166,13 @@ function makePlan () {
       stat: null
     },
     proc: { found: false, ours: false, exec: '', cwd: '', status: '' },
+    // 容器方式装出来的那套。归属判据见下面 isOurs 那段注释
+    docker: {
+      name: dName, imageWanted: imageName(), image: '',
+      found: false, ours: false, status: '', why: '',
+      cliMissing: false, daemonDown: false
+    },
+    imagePresent: false,
     // memePm2Name 指的是「用户自己那套服务」的进程，和卸载无关，
     // 但要在报告里点名说不动它 —— 这是用户发这条指令时最担心的东西
     other: { name: String(Config.get('memePm2Name') || '').trim(), found: false },
@@ -184,6 +207,25 @@ function makePlan () {
   if (plan.other.name && plan.other.name !== pm2Name) {
     plan.other.found = !!pm2Proc(plan.other.name)
   }
+
+  // docker 容器：判据和 pm2 那套同源，但更硬 —— 光比名字会被用户自己起的同名容器骗到，
+  // 必须带插件的归属 label 才算数（见 utils/docker.js 的 isOurs）
+  resetDockerCache()
+  const dState = daemonState()
+  plan.docker.cliMissing = dState.missing
+  plan.docker.daemonDown = !dState.missing && !dState.started
+  if (!dState.missing && dState.started) {
+    const info = containerInfo(dName)
+    if (info) {
+      plan.docker.found = true
+      plan.docker.ours = isOurs(info, { expectName: dName })
+      plan.docker.status = info.status
+      plan.docker.image = info.image
+      plan.docker.why = plan.docker.ours ? '' : oursReason(info, dName)
+    }
+  }
+  // 镜像在不在 —— 决定报告里要不要提「它还占着约 1.5G」
+  plan.imagePresent = imageExists(plan.docker.image || plan.docker.imageWanted)
 
   // 配置归属：认部署脚本写在首行的那句标记
   if (plan.config.exists) {
@@ -221,6 +263,24 @@ function renderPlan (plan, all) {
   }
   if (plan.other.found) {
     keep.push(`· pm2 进程 ${plan.other.name}：你自己那套服务（配置 memePm2Name），不动`)
+  }
+
+  // docker 那套（容器方式部署的才有）
+  if (plan.docker.found && plan.docker.ours) {
+    del.push(`· docker 容器 ${plan.docker.name}（当前 ${plan.docker.status || '未知'}）`)
+  } else if (plan.docker.found) {
+    keep.push(`· docker 容器 ${plan.docker.name}：不是插件装的（${plan.docker.why}），不动`)
+  } else if (plan.docker.cliMissing) {
+    keep.push('· docker：这台机器上没有 docker，跳过容器处理')
+  } else if (plan.docker.daemonDown) {
+    keep.push('· docker：没在运行，查不了容器（跳过）')
+  }
+  if (plan.imagePresent) {
+    const img = plan.docker.image || plan.docker.imageWanted
+    // 镜像留着是有用的（重装能省一次几百 MB 的下载），所以只在「卸载全部」时才删。
+    // 不写具体体积：plan 认的是「跑起来的那个容器用的镜像」，未必就是配置里那个
+    if (all) del.push(`· docker 镜像 ${img}`)
+    else keep.push(`· docker 镜像 ${img}：默认保留，重装能省一次下载，要删发 #meme卸载全部确认`)
   }
 
   if (plan.venv.exists) del.push(`· venv 目录 ${plan.venv.path}${sizeOf(plan.venv.stat)}`)
@@ -281,6 +341,11 @@ function rollbackConfig () {
   if (Config.get('serviceMode') === 'local') {
     Config.set('serviceMode', 'auto')
     rolled.push('serviceMode → auto')
+  }
+  // 装法回到默认的 venv：之后 #meme更新 不会再去找容器
+  if (String(Config.get('deployMode') || '').toLowerCase() === 'docker') {
+    Config.set('deployMode', 'venv')
+    rolled.push('deployMode → venv')
   }
   return rolled
 }
@@ -385,6 +450,14 @@ export class memeUninstall extends plugin {
     const fail = []
     let freed = 0
 
+    // 0. docker 容器排在最前面：容器活着会一直持有宿主仓库目录的句柄，
+    // 在 Windows / Docker Desktop 上会让后面这几步的删目录报「文件被占用」
+    if (plan.docker?.found && plan.docker.ours) {
+      const r = docker(['rm', '-f', plan.docker.name], { timeout: 90000 })
+      if (r.ok) done.push(`已停止并删除 docker 容器「${plan.docker.name}」`)
+      else fail.push(`删除 docker 容器失败：${(r.err || '未知原因').split('\n')[0]}`)
+    }
+
     // 1. pm2：只删归属校验过的那个，删完必须 save，否则重启机器 dump 又把它拉起来
     if (plan.proc.found && plan.proc.ours) {
       const r = pm2(['delete', plan.pm2Name])
@@ -439,7 +512,18 @@ export class memeUninstall extends plugin {
       }
     }
 
-    // 5. 配置回滚放最后：前面哪一步炸了也不影响这几个值该改回去
+    // 5. docker 镜像：只在「卸载全部」时删。rmi 失败不算致命（可能还有别的容器
+    // 在共用这些层），报出来就行，不用它去挡前面已经做成的结果。
+    // 绝不调 docker system prune / image prune —— 那会把用户其它项目的悬空镜像
+    // 一起清掉，卸载一个插件没理由动全局
+    if (all && plan.imagePresent) {
+      const img = plan.docker.image || plan.docker.imageWanted
+      const r = docker(['rmi', img], { timeout: 120000 })
+      if (r.ok) done.push(`已删除 docker 镜像 ${img}`)
+      else fail.push(`删除 docker 镜像失败：${(r.err || '未知原因').split('\n')[0]}（可能还有别的容器在用它）`)
+    }
+
+    // 6. 配置回滚放最后：前面哪一步炸了也不影响这几个值该改回去
     const rolled = rollbackConfig()
     if (rolled.length) done.push(`插件配置已回滚：${rolled.join('、')}`)
 

@@ -37,7 +37,7 @@ git clone --depth=1 https://gitcode.com/ccxhan/meme-plugin.git ./plugins/meme-pl
 | 你的情况 | 怎么做 |
 | --- | --- |
 | 别人给了你地址 | 填进配置 `memeApiUrl`，完事。表情仓库、`#meme部署`、`reposDir` 全都不用管 |
-| 机器上还没有 | 发 `#meme部署`（主人限定），自动建环境 + 拉 5 个仓库 + 挂后台。需要 Python 3.9+、git、pm2；约占 2G，等几分钟正常；反复发不会重复装 |
+| 机器上还没有 | 发 `#meme部署`（主人限定），它会先问你用哪种装法：<br>**docker** —— 拉官方镜像跑容器，机器上有 docker 就行，不用管 Python，镜像约 1.5G<br>**venv** —— 在本机建 Python 环境，需要 Python 3.9+、git、pm2，约占 2G<br>两种都要等几分钟，反复发不会重复装 |
 | 早就装过 | `memeApiUrl` 指向它，**并且一定要填 `reposDir`**（表情仓库目录，常见 `/opt/meme`） |
 
 > ⚠️ 第三种情况不填 `reposDir` 的话，`#meme更新` 会另外下一份，你更新的是新下的、画图服务读的是老的——
@@ -86,7 +86,7 @@ git clone --depth=1 https://gitcode.com/ccxhan/meme-plugin.git ./plugins/meme-pl
 | `#meme更新` | 拉新表情、必要时重启服务、刷新列表（本机还没装服务时会拦下，提示去 `#meme部署`） |
 | `#meme刷新` / `#meme清缓存` | 只重建索引不动仓库（`#meme重载` 同效）/ 清出图缓存 |
 | `#meme插件更新` / `#meme版本` | 升级插件本体、看版本 |
-| `#meme部署` / `#meme部署状态` / `#meme卸载` | 装 / 查 / 卸画图服务 |
+| `#meme部署` / `#meme部署状态` / `#meme卸载` | 装（先选 venv 还是 docker）/ 查 / 卸画图服务 |
 | `#meme排行` `#meme总排行` `#meme清空统计` | 本群榜 / 跨群总榜 / 清零 |
 
 拉黑某个人、屏蔽某个表情是**改配置**（`blackUsers` / `blackMemes`），不是指令。
@@ -104,6 +104,7 @@ git clone --depth=1 https://gitcode.com/ccxhan/meme-plugin.git ./plugins/meme-pl
 | --- | --- | --- |
 | `memeApiUrl` | `http://127.0.0.1:2233` | 画图服务地址，**最重要的一项** |
 | `reposDir` | 空 | 表情仓库目录；用现成服务时必填，见上面的警告 |
+| `dockerImage` | 南大加速站的官方镜像 | 只有 docker 装法用得到；拉不动就换成 `ghcr.io/memecrafters/meme-generator:0.1.14` |
 | `forceSharp` | `true` | 指令要不要带 `#` |
 | `enableWeb` / `webPort` / `webUrl` | `true` / `3132` / 空 | 网页版开关、端口、对外网址 |
 | `enableFun` / `funCooldown` / `comboCount` | `true` / `20` / `6` | 整活开关、群内冷却秒数、一次做几个 |
@@ -118,7 +119,9 @@ git clone --depth=1 https://gitcode.com/ccxhan/meme-plugin.git ./plugins/meme-pl
 
 ## 出问题先看这几条
 
-- **一直「服务连不上」** —— `memeApiUrl` 填错，或画图服务没起来（`pm2 ls` 看看）
+- **一直「服务连不上」** —— `memeApiUrl` 填错，或画图服务没起来（venv 装的看 `pm2 ls`，docker 装的看 `docker ps`）
+- **docker 装完表情很少** —— 宿主的表情目录没共享给 Docker：Windows / macOS 的 Docker Desktop 到设置里把该磁盘加进去，再发一次 `#meme部署 docker`
+- **镜像拉不动** —— 把配置 `dockerImage` 换成官方的 `ghcr.io/memecrafters/meme-generator:0.1.14`，再发一次命令（拉过的层不会重下）
 - **更新了但表情没变多** —— 十成是 `reposDir` 没填，见上面的警告
 - **网页打不开** —— `webUrl` 没填对外地址，或端口没放行
 - **发不出图** —— 一次转发太大（比如上百张），把 `comboCount` 调小

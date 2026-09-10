@@ -5,9 +5,12 @@ memeApiUrl: "http://127.0.0.1:2233"
 apiTimeout: 30000
 # 这套 meme 服务是不是「本机的、插件管得着的」，决定 #meme更新 要不要拉表情仓库。
 #   auto   —— 按 memeApiUrl 判断，回环地址算本机（默认，够用）
-#   remote —— 强制当外部服务：#meme更新 只刷索引，不拉仓库、不改 config.toml、不重启进程
+#   remote —— 强制当外部服务：#meme更新 只刷索引，不拉仓库、不改配置、不重启服务
 #   local  —— 强制当本机服务：走完整更新流程
-# 用别人的服务地址时保持 auto 就行；服务跑在本机 docker 里（仓库在容器内）要设 remote
+# 用别人的服务地址时保持 auto 就行。
+# 注意：用 #meme部署 docker 装的那套**也算本机服务**（表情仓库挂载自宿主机），
+# 插件部署完会自动设成 local。只有服务在别的机器上、或者容器自带的仓库
+# （别人手工跑的那种）才需要设 remote
 serviceMode: auto
 
 # ===== 触发方式 =====
@@ -243,14 +246,23 @@ repos:
 gitProxy: ""
 
 # ===== 可选部署 =====
-# 是否已经用 #meme部署 部署过本机服务。脚本执行成功后自动置 true
+# 是否已经用 #meme部署 部署过本机服务。部署成功后自动置 true
 deployed: false
-# 部署时 pm2 的进程名。默认与上面的 memePm2Name 不同，
-# 避免覆盖机器上已有的 meme 进程
+# 上次用的装法，部署成功后自动写入：
+#   venv   —— 建 Python 虚拟环境，用 pm2 托管
+#   docker —— 拉官方镜像跑容器，表情仓库挂载自宿主机
+# 它决定 #meme更新 是重启 pm2 进程还是重建容器，一般不用手改
+deployMode: venv
+# 一键部署的服务名。venv 方式下是 pm2 进程名，docker 方式下是容器名。
+# 默认与上面的 memePm2Name 不同，避免碰到机器上已有的 meme 服务
 deployPm2Name: "meme-plugin"
 # 部署出来的服务监听哪个端口。机器上已经有一个 meme 服务占着 2233 时改这里，
-# 否则新装的那套一起来就撞端口、被 pm2 反复重启。
+# 否则新装的那套一起来就撞端口、被反复重启。
 # 部署成功后 memeApiUrl 会自动指向这个端口
 deployPort: 2233
+# docker 方式用的镜像地址。默认走南大加速站，国内可以直接拉；
+# 拉不动就换成官方地址：ghcr.io/memecrafters/meme-generator:0.1.14
+# tag 必须是 0.1.x —— 0.2 起上游改成了 Rust 库，不带 HTTP 服务，插件连不上
+dockerImage: "ghcr.nju.edu.cn/memecrafters/meme-generator:0.1.14"
 # pip 镜像源，留空用默认源
 pipIndexUrl: "https://pypi.tuna.tsinghua.edu.cn/simple"

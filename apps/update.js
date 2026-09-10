@@ -5,21 +5,12 @@ import MemeApi from '../model/memeApi.js'
 import MemeIndex from '../model/memeIndex.js'
 import Preview from '../model/preview.js'
 import { logPrefix } from '../constants/path.js'
-import { mkdirs } from '../utils/file.js'
-import { syncMemeDirs, reposRoot, tomlPath, venvMemePath } from '../utils/memeDirs.js'
+import { syncMemeDirs, tomlPath, venvMemePath } from '../utils/memeDirs.js'
+import { syncRepos } from '../utils/repos.js'
 import { clearImageCaches } from '../utils/cleanup.js'
 import { pm2 } from '../utils/pm2.js'
-import { git } from '../utils/git.js'
+import { containerInfo, isOurs, memeDirsEnv, recreateContainer, containerLogs } from '../utils/docker.js'
 import { beginTask, endTask, busyTip } from '../utils/lock.js'
-
-/**
- * 单个仓库的路径。
- * reposRoot 复用 utils/memeDirs.js 那份 —— 这里原本自己抄了一遍，
- * 两处实现容易改漏（比如尾部反斜杠的处理），而且必须和写进 meme_dirs 的路径完全一致。
- */
-function resolveRepoPath (repo) {
-  return path.join(reposRoot(), repo.dir)
-}
 
 export class memeUpdate extends plugin {
   constructor () {
@@ -137,13 +128,19 @@ export class memeUpdate extends plugin {
     }
 
     // 服务压根没在这台机器上装过时，下面那一整套（克隆几个 G 的仓库 → 写 meme_dirs
-    // → 重启 pm2）没有一步能生效：没有人会去读拉下来的目录，纯占磁盘，还要等十几分钟。
+    // → 重启服务）没有一步能生效：没有人会去读拉下来的目录，纯占磁盘，还要等十几分钟。
     // 所以先确认「确实有个本机服务等着喂」，没有就直接指路 #meme部署。
     //
-    // 判据取三样全缺才算没装：服务连不通、config.toml 不在、venv 里没有 meme。
-    // 任一样在就说明装过（服务只是没起来 / 手动装的 / 在 docker 里但仓库挂到本机），
+    // 判据取四样全缺才算没装：服务连不通、config.toml 不在、venv 里没有 meme、
+    // 也没有插件装的容器 —— 容器停着的时候前两样可能都不在，不能把这种情况当成没装。
+    // 任一样在就说明装过（服务只是没起来 / 手动装的 / 容器方式部署的），
     // 照旧走完整流程 —— 拦截宁松勿严，误伤「服务挂了想更新」比漏放几次严重得多。
-    if (!await MemeApi.ping() && !fs.existsSync(tomlPath()) && !fs.existsSync(venvMemePath())) {
+    const isDocker = !!Config.get('deployed') &&
+      String(Config.get('deployMode') || '').toLowerCase() === 'docker'
+    const hasOurContainer = isDocker &&
+      isOurs(containerInfo(Config.get('deployPm2Name') || 'meme-plugin'))
+    if (!await MemeApi.ping() && !fs.existsSync(tomlPath()) &&
+      !fs.existsSync(venvMemePath()) && !hasOurContainer) {
       await e.reply(
         '❌ 这台机器上还没有 meme 服务，就不白下载几个 G 了\n' +
         '#meme更新 只负责给已经装好的服务换表情资源\n\n' +
@@ -161,58 +158,10 @@ export class memeUpdate extends plugin {
 
     await e.reply('🔄 开始更新表情包资源...')
     const msgs = []
-    const noChange = []
-    let hasUpdates = false
-    mkdirs(reposRoot())
-
-    for (const repo of repos) {
-      const repoPath = resolveRepoPath(repo)
-      try {
-        // 仓库不存在就克隆
-        if (!fs.existsSync(path.join(repoPath, '.git'))) {
-          const url = Config.proxyUrl(repo.url)
-          const c = await git(
-            ['clone', '--depth', '1', '-b', String(repo.branch || 'main'), url, repoPath],
-            { timeout: 600000 }
-          )
-          if (!c.ok) throw new Error(c.fatal || c.err || c.out || 'git clone 失败')
-          msgs.push(`📥 ${repo.name} 首次克隆完成`)
-          hasUpdates = true
-          continue
-        }
-
-        const oldHead = await git(['rev-parse', 'HEAD'], { cwd: repoPath, timeout: 15000 })
-        const pull = await git(['pull'], { cwd: repoPath, timeout: 600000 })
-        if (!pull.ok) throw new Error(pull.fatal || pull.err || pull.out || 'git pull 失败')
-        const newHead = await git(['rev-parse', 'HEAD'], { cwd: repoPath, timeout: 15000 })
-
-        if (oldHead.out && oldHead.out === newHead.out) {
-          // 没更新的攒起来一句话带过，不逐个报
-          noChange.push(repo.name)
-          continue
-        }
-
-        hasUpdates = true
-        const [diff, logs] = await Promise.all([
-          git(['diff', '--name-only', `${oldHead.out}..${newHead.out}`], { cwd: repoPath, timeout: 30000 }),
-          git(['log', '--pretty=format:%s', `${oldHead.out}..${newHead.out}`], { cwd: repoPath, timeout: 30000 })
-        ])
-        const diffFiles = diff.out.split('\n').filter(Boolean)
-
-        msgs.push(`✅ ${repo.name}：${diffFiles.length} 个文件`)
-        if (logs.out) {
-          const first = logs.out.split('\n')[0]
-          msgs.push(`   ${first.length > 60 ? first.slice(0, 60) + '…' : first}`)
-        }
-      } catch (err) {
-        let errMsg = `❌ ${repo.name} 失败：`
-        if (err.message.includes('not a git repository')) errMsg += '目录不是 git 仓库'
-        else if (/Could not resolve host|Failed to connect/i.test(err.message)) errMsg += '网络不通，检查 gitProxy'
-        else if (err.message.includes('Authentication failed')) errMsg += '认证失败'
-        else errMsg += err.message.split('\n')[0].slice(0, 60)
-        msgs.push(errMsg)
-      }
-    }
+    // 拉仓库那套搬到 utils/repos.js 了：docker 部署也要用同一份
+    const sync = await syncRepos({ onMessage: t => msgs.push(t) })
+    const noChange = sync.noChange
+    const hasUpdates = sync.hasUpdates
 
     if (!hasUpdates) {
       await e.reply(msgs.length
@@ -223,54 +172,85 @@ export class memeUpdate extends plugin {
 
     if (noChange.length) msgs.push(`（${noChange.length} 个仓库无更新）`)
 
-    // ① 把仓库登记进 config.toml 的 meme_dirs。
-    // 必须在重启之前做：meme-generator 只在启动时读这一行，
-    // 顺序颠倒的话新仓库这次重启还是扫不到，得再更新一遍才生效。
-    try {
-      const s = syncMemeDirs()
-      if (!s.ok) {
-        msgs.push(`⚠️ meme_dirs 同步失败：${s.reason}`)
-        msgs.push('新仓库可能加载不到，需手动改 config.toml')
-      } else if (s.changed) {
-        msgs.push(`\n📝 已登记 ${s.dirs.length} 个表情目录到 config.toml`)
-        if (s.added?.length) msgs.push(`＋ ${s.added.map(d => path.basename(path.dirname(d))).join('、')}`)
-        if (s.removed?.length) msgs.push(`－ ${s.removed.map(d => path.basename(path.dirname(d))).join('、')}`)
-      }
-      if (s.skipped?.length) {
-        msgs.push(`⚠️ ${s.skipped.length} 个仓库的表情目录不存在，已跳过：`)
-        for (const k of s.skipped.slice(0, 4)) msgs.push(`　${k.name} → ${k.path}`)
+    // ① 把仓库登记进 meme_dirs。
+    // venv 方式写宿主 config.toml；docker 方式走启动参数（见下），两种情况都要在
+    // 重启之前算清楚 —— 服务只在启动时读这份目录清单。
+    if (isDocker) {
+      // 容器读的是启动时的环境变量，改宿主那份 config.toml 进不去容器。
+      // 说清楚而不是静默跳过，免得有人对着「明明改了却没生效」查半天
+      const { count, skipped } = memeDirsEnv()
+      msgs.push(`\n📝 表情目录 ${count} 个：容器方式由启动参数带上，宿主配置不动`)
+      if (skipped?.length) {
+        msgs.push(`⚠️ ${skipped.length} 个仓库的表情目录不存在，会被跳过：`)
+        for (const k of skipped.slice(0, 4)) msgs.push(`　${k.name} → ${k.path}`)
         msgs.push('　（多半是 memeSubDir 填错了，去锅巴面板确认）')
       }
-    } catch (err) {
-      msgs.push(`⚠️ meme_dirs 同步异常：${err.message}`)
+    } else {
+      try {
+        const s = syncMemeDirs()
+        if (!s.ok) {
+          msgs.push(`⚠️ meme_dirs 同步失败：${s.reason}`)
+          msgs.push('新仓库可能加载不到，需手动改 config.toml')
+        } else if (s.changed) {
+          msgs.push(`\n📝 已登记 ${s.dirs.length} 个表情目录到 config.toml`)
+          if (s.added?.length) msgs.push(`＋ ${s.added.map(d => path.basename(path.dirname(d))).join('、')}`)
+          if (s.removed?.length) msgs.push(`－ ${s.removed.map(d => path.basename(path.dirname(d))).join('、')}`)
+        }
+        if (s.skipped?.length) {
+          msgs.push(`⚠️ ${s.skipped.length} 个仓库的表情目录不存在，已跳过：`)
+          for (const k of s.skipped.slice(0, 4)) msgs.push(`　${k.name} → ${k.path}`)
+          msgs.push('　（多半是 memeSubDir 填错了，去锅巴面板确认）')
+        }
+      } catch (err) {
+        msgs.push(`⚠️ meme_dirs 同步异常：${err.message}`)
+      }
     }
 
-    // ② 重启 meme 服务。
+    // ② 让服务重新加载表情。
     // meme-generator 只在进程启动时扫描 meme_dirs，不重启就永远加载不到新表情。
-    // 必须按【名字】重启：pm2 的数字 ID 会随进程增删而错位，
-    // 之前写死的 `pm2 restart 2` 实际重启的是 kugou-api-new，meme 服务从未重启过。
-    const pm2Name = Config.get('deployed')
-      ? Config.get('deployPm2Name')
-      : Config.get('memePm2Name')
-    msgs.push(`\n🔄 正在重启 meme 服务（${pm2Name}）...`)
-    // 走 utils/pm2.js：Windows / nvm 环境下 PATH 里常常没有 pm2，
-    // 直接 execSync('pm2 …') 会报 command not found，很容易被当成进程名填错
-    const r = pm2(['restart', pm2Name])
-    if (!r.ok) {
-      msgs.push(`❌ meme 服务重启失败：${(r.err || r.out || 'pm2 restart 失败').split('\n')[0]}`)
-      msgs.push(r.missing
-        ? '（这台机器上找不到 pm2 命令，不是进程名的问题）'
-        : `请检查 pm2 里的进程名是否叫「${pm2Name}」，可在配置里改 memePm2Name`)
+    if (isDocker) {
+      // 容器方式必须【重建】而不是 docker restart：meme_dirs 是启动时的环境变量，
+      // 重启拿到的还是旧那份，新加的表情仓库照样扫不到
+      const cName = Config.get('deployPm2Name') || 'meme-plugin'
+      const port = Number(Config.get('deployPort')) || 2233
+      msgs.push(`\n🔄 正在重建容器（${cName}）...`)
       await e.reply(msgs.join('\n'))
-      return true
+      const rc = await recreateContainer({ name: cName, port, notify: t => e.reply(t).catch(() => {}) })
+      if (!rc.ok) {
+        msgs.push(`❌ 容器重建失败：${rc.error}`)
+        if (rc.hint) msgs.push(`👉 ${rc.hint}`)
+        const logs = containerLogs(cName).split('\n').map(l => l.trim()).filter(Boolean).slice(-6)
+        if (logs.length) msgs.push(`容器日志：\n${logs.map(l => `　${l}`).join('\n')}`)
+        await e.reply(msgs.join('\n'))
+        return true
+      }
+      msgs.push(`✅ 容器已按新表情重建${rc.created ? '（之前不在，这次新建）' : ''}`)
+    } else {
+      // 必须按【名字】重启：pm2 的数字 ID 会随进程增删而错位，
+      // 之前写死的 `pm2 restart 2` 实际重启的是 kugou-api-new，meme 服务从未重启过。
+      const pm2Name = Config.get('deployed')
+        ? Config.get('deployPm2Name')
+        : Config.get('memePm2Name')
+      msgs.push(`\n🔄 正在重启 meme 服务（${pm2Name}）...`)
+      // 走 utils/pm2.js：Windows / nvm 环境下 PATH 里常常没有 pm2，
+      // 直接 execSync('pm2 …') 会报 command not found，很容易被当成进程名填错
+      const r = pm2(['restart', pm2Name])
+      if (!r.ok) {
+        msgs.push(`❌ meme 服务重启失败：${(r.err || r.out || 'pm2 restart 失败').split('\n')[0]}`)
+        msgs.push(r.missing
+          ? '（这台机器上找不到 pm2 命令，不是进程名的问题）'
+          : `请检查 pm2 里的进程名是否叫「${pm2Name}」，可在配置里改 memePm2Name`)
+        await e.reply(msgs.join('\n'))
+        return true
+      }
+      msgs.push('✅ meme 服务重启成功')
     }
-    msgs.push('✅ meme 服务重启成功')
 
     // ③ 等服务重新扫描完 meme_dirs。
     // 实测它是扫完才开始监听（重启后约 7 秒连接被拒），所以能响应就代表扫完了；
     // waitReady 仍会多确认一拍数量不变，防它以后改成边扫边服务
-    if (!await MemeApi.waitReady(60)) {
-      msgs.push('⚠️ meme 服务 60 秒内没就绪，索引未刷新\n稍后手动发 #meme刷新')
+    if (!await MemeApi.waitReady(isDocker ? 90 : 60)) {
+      msgs.push(`⚠️ meme 服务 ${isDocker ? 90 : 60} 秒内没就绪，索引未刷新\n稍后手动发 #meme刷新`)
       await e.reply(msgs.join('\n'))
       return true
     }

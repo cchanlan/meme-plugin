@@ -41,7 +41,7 @@ export function supportGuoba () {
         {
           field: 'serviceMode',
           label: '服务归属',
-          bottomHelpMessage: '决定 #meme更新 要不要拉表情仓库。用别人的服务时拉仓库毫无意义——本机没有 meme-generator 去扫它，白占几个 G。auto 按服务地址自动判断（回环地址算本机），够用；服务跑在本机 docker 里（仓库在容器内）选「外部服务」',
+          bottomHelpMessage: '决定 #meme更新 要不要拉表情仓库。用别人的服务时拉仓库毫无意义——本机没有 meme-generator 去扫它，白占几个 G。auto 按服务地址自动判断（回环地址算本机），够用；服务在别的机器上、或者容器自带的仓库（别人手工跑的容器）选「外部服务」。用 #meme部署 docker 装的那套算本机服务，插件会自己设好',
           component: 'Select',
           componentProps: {
             options: [
@@ -380,17 +380,36 @@ export function supportGuoba () {
         },
         {
           field: 'deployPm2Name',
-          label: '一键部署的进程名',
-          bottomHelpMessage: '默认 meme-plugin，与机器上已有的 meme 进程隔离，避免冲突',
+          label: '一键部署的服务名',
+          bottomHelpMessage: '默认 meme-plugin，与机器上已有的 meme 服务隔离，避免冲突。venv 方式下是 pm2 进程名，docker 方式下是容器名',
           component: 'Input',
           componentProps: { placeholder: 'meme-plugin' }
         },
         {
           field: 'deployPort',
           label: '一键部署的监听端口',
-          bottomHelpMessage: '机器上已经有 meme 服务占着 2233 时改这里，否则新装的那套一起来就撞端口被 pm2 反复重启。部署成功后服务地址会自动指向它',
+          bottomHelpMessage: '机器上已经有 meme 服务占着 2233 时改这里，否则新装的那套一起来就撞端口被反复重启。部署成功后服务地址会自动指向它',
           component: 'InputNumber',
           componentProps: { min: 1024, max: 65535 }
+        },
+        {
+          field: 'deployMode',
+          label: '一键部署的装法',
+          bottomHelpMessage: 'venv=用系统 Python 装、pm2 托管；docker=拉镜像跑容器。部署成功后插件自己写，一般不用手改。它决定 #meme更新 是重启进程还是重建容器',
+          component: 'Select',
+          componentProps: {
+            options: [
+              { label: 'venv（Python 直装）', value: 'venv' },
+              { label: 'docker（容器）', value: 'docker' }
+            ]
+          }
+        },
+        {
+          field: 'dockerImage',
+          label: 'docker 镜像地址',
+          bottomHelpMessage: '默认走南大加速站，国内能直接拉。拉不动就换成官方 ghcr.io/memecrafters/meme-generator:0.1.14，然后重发一次 #meme部署 docker（下过的层不会重下）。tag 要 0.1.x',
+          component: 'Input',
+          componentProps: { placeholder: 'ghcr.nju.edu.cn/memecrafters/meme-generator:0.1.14' }
         }
       ],
       getConfigData () {

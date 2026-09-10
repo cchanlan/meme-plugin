@@ -145,7 +145,10 @@ export async function renderHelp (info = {}) {
     ['#meme清空统计', '排行榜清零重来'],
     ['#meme插件更新', '更新插件本体，非表情'],
     ['#meme版本', '看版本并查有没有新的'],
-    ...(local ? [['#meme部署 / #meme卸载', '本机装一套 meme 服务 / 卸掉']] : [])
+    ...(local ? [
+      ['#meme部署', '本机装一套服务（venv / docker）'],
+      ['#meme卸载', '卸掉本机这套，会先列清单确认']
+    ] : [])
   ], 'lilac')
 
   // 整活玩法能关（enableFun），关掉了就别在帮助里指一条不响应的路
