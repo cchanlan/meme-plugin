@@ -11,15 +11,15 @@ import { logPrefix } from '../constants/path.js'
 function netError (err) {
   const timeout = Config.get('apiTimeout') || 30000
   if (err?.name === 'AbortError') {
-    return new Error(`meme 服务 ${Config.getApiUrl()} 超过 ${timeout}ms 没响应，可能正在扫描表情目录，等十几秒再试`)
+    return new Error(`meme 服务 ${Config.getApiUrl()} 没响应，请稍后重试`)
   }
   const code = err?.cause?.code || err?.code || ''
   if (/^(ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|ECONNRESET|EAI_AGAIN|ETIMEDOUT|UND_ERR)/.test(code) ||
     /fetch failed/i.test(err?.message || '')) {
     return new Error(
-      `连不上 meme 服务 ${Config.getApiUrl()}${code ? `（${code}）` : ''}\n` +
-      '服务没在跑，或者配置 memeApiUrl 填的地址不对。发 #meme部署状态 看一眼；' +
-      '本机没有服务的话发 #meme部署 装一套，或把 memeApiUrl 指向现成的服务'
+      `连不上 meme 服务 ${Config.getApiUrl()}\n` +
+      '服务没在跑，或者配置里的服务地址填错了。请主人发 #meme部署状态 看一眼；' +
+      '本机没有服务的话，请主人发 #meme部署 装一套'
     )
   }
   return err
@@ -55,15 +55,15 @@ function apiError (status, text) {
   // 服务端说没这个表情：本地索引比服务端旧了（对方更新时删掉/改名了这个表情），
   // 而列表和 Web 站照旧显示着它，用户只会看到一句英文 Not Found 摸不着头脑
   if (status === 404 || /^not found$/i.test(detail)) {
-    return '服务端没有这个表情，本地索引可能过期了 —— 发 #meme刷新 同步一下'
+    return '服务端没有这个表情，请主人发 #meme刷新 同步一下'
   }
   if (/cannot identify image file|图片加载失败/.test(detail)) {
-    return '有张图片读不出来 😵 可能不是图片、下载不完整或者格式太偏门，换一张再试'
+    return '有张图片读不出来 😵 换一张再试'
   }
   if (/validation error|参数模型验证失败/.test(detail)) {
     // pydantic 的第一行是「N validation error for Model」，字段名在第二行
     const field = detail.split('\n').map(s => s.trim()).find(s => /^\w+$/.test(s))
-    return `参数不对${field ? `（${field}）` : ''}，发「表情名详情」看这个表情支持哪些参数`
+    return `参数不对，发「表情名详情」看这个表情支持哪些参数`
   }
   // 兜底：去掉 Python 对象地址这类噪音，再截断 —— 群消息不该甩一屏 traceback
   const clean = detail.replace(/<[\w.]+ object at 0x[0-9a-f]+>/gi, '（内部对象）').replace(/\s*\n\s*/g, ' ')
@@ -165,7 +165,7 @@ const MemeApi = {
       // 404 基本都是地址填错：这个路径 meme-generator 一定有，
       // 反代到了别的站（最常见是填成本插件自己的 Web 预览站）才会 404
       const hint = res.status === 404
-        ? `\n（${Config.getApiUrl()} 上没有 /memes/keys，这地址多半不是 meme-generator 服务本体，别填成 Web 预览站的地址）`
+        ? `\n（这个地址上没有表情接口，多半填成了 Web 预览站地址，要填服务本体的地址）`
         : ''
       throw new Error(`获取表情列表失败: HTTP ${res.status}${hint}`)
     }

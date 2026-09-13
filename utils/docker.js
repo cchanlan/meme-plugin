@@ -124,7 +124,7 @@ export function docker (args = [], { timeout = 60000 } = {}) {
       out: '',
       missing: true,
       err: IS_WIN
-        ? '找不到 docker。装过的话多半是 Yunzai 还拿着旧的 PATH，重启 Yunzai 即可'
+        ? '找不到 docker，重启 Yunzai 后再试一次；没装就先装 Docker'
         : '找不到 docker 命令'
     }
   }
@@ -402,11 +402,11 @@ function pullFailHint (image, lines = [], extra = {}) {
     hints.push('这个地址或 tag 不存在。tag 要填 0.1.x —— 0.2 起上游没有 HTTP 服务，插件连不上')
   }
   if (/denied|unauthorized/i.test(text)) {
-    hints.push('镜像仓库拒绝访问，多半是地址或 tag 写错了')
+    hints.push('镜像仓库拒绝访问，检查地址和 tag')
   }
   if (extra.fallbackTried) {
     hints.push(`已经自动换官方地址（${extra.fallbackTried}）试过一次，也不通`)
-    hints.push('那多半是这台机器到镜像仓库的网络本身有问题，或有代理干扰；先在终端手动跑一次 docker pull 看看报什么')
+    hints.push('先在终端手动跑一次 docker pull，看它报什么')
   } else if (!/^ghcr\.io\//.test(String(image))) {
     hints.push(`也可以换回官方地址重试：把配置 dockerImage 改成 ${OFFICIAL_PREFIX}:${imageTag(image)}，改完再发一次命令`)
   }

@@ -62,6 +62,6 @@ export function blocked (e) {
  */
 export function emptyIndexTip () {
   return '😶 本地还没有表情索引\n' +
-    `有能连上的 meme 服务就发 #meme刷新 拉一次（当前地址：${Config.getApiUrl()}）\n` +
-    '本机没有服务的话发 #meme部署 装一套，或把配置 memeApiUrl 指向现成的服务'
+    `请主人发 #meme刷新 拉一次（当前地址：${Config.getApiUrl()}）\n` +
+    '本机没有服务的话，请主人发 #meme部署 装一套'
 }

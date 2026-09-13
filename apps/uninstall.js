@@ -257,19 +257,19 @@ function renderPlan (plan, all) {
   if (plan.proc.found && plan.proc.ours) {
     del.push(`· pm2 进程 ${plan.pm2Name}（当前 ${plan.proc.status || '未知'}）并 pm2 save`)
   } else if (plan.proc.found) {
-    keep.push(`· pm2 进程 ${plan.pm2Name}：不是插件部署的（exec=${plan.proc.exec || '?'}，cwd=${plan.proc.cwd || '?'}），不动`)
+    keep.push(`· pm2 进程 ${plan.pm2Name}：不是插件部署的，不动`)
   } else if (plan.pm2Missing) {
     keep.push('· pm2：没找到可执行文件，跳过进程处理')
   }
   if (plan.other.found) {
-    keep.push(`· pm2 进程 ${plan.other.name}：你自己那套服务（配置 memePm2Name），不动`)
+    keep.push(`· pm2 进程 ${plan.other.name}：你自己那套服务，不动`)
   }
 
   // docker 那套（容器方式部署的才有）
   if (plan.docker.found && plan.docker.ours) {
     del.push(`· docker 容器 ${plan.docker.name}（当前 ${plan.docker.status || '未知'}）`)
   } else if (plan.docker.found) {
-    keep.push(`· docker 容器 ${plan.docker.name}：不是插件装的（${plan.docker.why}），不动`)
+    keep.push(`· docker 容器 ${plan.docker.name}：不是插件装的，不动`)
   } else if (plan.docker.cliMissing) {
     keep.push('· docker：这台机器上没有 docker，跳过容器处理')
   } else if (plan.docker.daemonDown) {
@@ -286,12 +286,12 @@ function renderPlan (plan, all) {
   if (plan.venv.exists) del.push(`· venv 目录 ${plan.venv.path}${sizeOf(plan.venv.stat)}`)
 
   if (plan.repos.external) {
-    keep.push(`· 表情仓库 ${plan.repos.externalPath}：在插件数据目录之外（你自己管的），一个字节都不动`)
+    keep.push(`· 表情仓库 ${plan.repos.externalPath}：在插件数据目录之外，一个字节都不动`)
   }
   // 默认位置那份是另一件事：reposDir 指到外面时，这里可能还留着早先克隆的副本
   // （README 里「白占一份磁盘」那个坑），它确实在插件数据目录里，归卸载管
   if (plan.repos.exists) {
-    const tail = plan.repos.external ? '（reposDir 指到别处了，这是残留副本）' : ''
+    const tail = plan.repos.external ? '（残留副本）' : ''
     if (all) del.push(`· 表情仓库 ${plan.repos.path}${sizeOf(plan.repos.stat)}${tail}`)
     else keep.push(`· 表情仓库 ${plan.repos.path}${sizeOf(plan.repos.stat)}${tail}：默认保留，要删发 #meme卸载全部确认`)
   }
@@ -307,10 +307,7 @@ function renderPlan (plan, all) {
   if (plan.material.exists) {
     // Windows 和 macOS 上 localstore 的 data dir 与 config dir 是同一个目录，
     // 删素材会把 config.toml 一起带走 —— 所以三个平台统一只报告不删
-    const why = IS_WIN || process.platform === 'darwin'
-      ? '它和 config.toml 同一个目录'
-      : '重装时还能省一次下载'
-    keep.push(`· 表情素材 ${plan.material.path}${sizeOf(plan.material.stat)}：不删（${why}），要清自己删`)
+    keep.push(`· 表情素材 ${plan.material.path}${sizeOf(plan.material.stat)}：不删，要清自己删`)
   }
 
   return { del, keep }
@@ -430,10 +427,10 @@ export class memeUninstall extends plugin {
     if (stillAlive) {
       lines.push(`\n💡 ${Config.getApiUrl()} 还连得上，表情功能不受影响，本地索引也照旧留着`)
     } else if (plan.proc.found && plan.proc.ours) {
-      lines.push('\n💡 插件部署的那套服务已经没了，表情列表会变空 —— 这是故意的，' +
-        '免得列表里一堆点了却生成不了的表情。要恢复：把配置 memeApiUrl 指向现成服务后发 #meme刷新，或重新发 #meme部署')
+      lines.push('\n💡 插件部署的那套服务已经没了，表情列表会变空。' +
+        '要恢复：把配置里的服务地址指向现成服务后发 #meme刷新，或重新发 #meme部署')
     } else {
-      lines.push('\n💡 表情功能需要一个能连上的 meme 服务：配置 memeApiUrl 指过去后发 #meme刷新，或发 #meme部署')
+      lines.push('\n💡 表情功能需要一个能连上的 meme 服务：把配置里的服务地址指过去后发 #meme刷新，或发 #meme部署')
     }
     await e.reply(lines.join('\n'))
     logger.info(`${logPrefix}卸载完成：${done.length} 项成功，${fail.length} 项失败`)

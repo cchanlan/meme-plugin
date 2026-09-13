@@ -43,11 +43,9 @@ export class memeUpdate extends plugin {
   async clearCache (e) {
     const before = Preview.stats()
     clearImageCaches()
-    const mb = n => (n / 1048576).toFixed(1)
     await e.reply(
       '🧹 出图缓存已清空\n' +
-      `预览图 ${before.full} 张（${mb(before.fullSize)}MB）· 缩略图 ${before.thumb} 张（${mb(before.thumbSize)}MB）\n` +
-      '下次访问会重新回源，Web 站首屏会慢一点'
+      `预览图 ${before.full} 张 · 缩略图 ${before.thumb} 张`
     )
     return true
   }
@@ -82,11 +80,11 @@ export class memeUpdate extends plugin {
 
   /** 只刷新索引，不动仓库（服务端已经是新的时候用这个更快） */
   async reloadOnly (e, quiet = false) {
-    if (!quiet) await e.reply('正在热加载表情索引...')
+    if (!quiet) await e.reply('正在刷新表情索引...')
     try {
       const r = await MemeIndex.refreshFromApi()
       clearImageCaches()
-      let msg = `✅ 已热加载：${r.count} 个表情 / ${r.keywordCount} 个关键词`
+      let msg = `✅ 已刷新：${r.count} 个表情 / ${r.keywordCount} 个关键词`
       if (r.added.length) {
         msg += `\n🆕 新增 ${r.added.length} 个：${r.added.slice(0, 12).join('、')}${r.added.length > 12 ? ' …' : ''}`
         msg += '\n不用重启，直接发就能用~'
@@ -96,12 +94,12 @@ export class memeUpdate extends plugin {
       // 个别 info 没拉到时表情数会悄悄少一截，不说清楚只会被当成「服务缺表情」
       if (r.failed.length) {
         msg += `\n⚠️ 有 ${r.failed.length} 个没拉到（${r.failed.slice(0, 5).join('、')}${r.failed.length > 5 ? ' …' : ''}）`
-        msg += '\n多半是网络抖动，再发一次 #meme刷新 就好'
+        msg += '\n再发一次 #meme刷新 就好'
       }
       await e.reply(msg)
     } catch (err) {
       await e.reply(
-        `❌ 热加载失败：${err.message}\n` +
+        `❌ 刷新失败，请稍后重试\n` +
         `当前服务地址：${Config.getApiUrl()}\n` +
         '发 #meme部署状态 可以看连通性'
       )
@@ -118,11 +116,9 @@ export class memeUpdate extends plugin {
       // 几百个表情要几十秒，中间一句话都没有的话用户只会以为指令没生效
       await e.reply(
         `ℹ️ 你连的是外部 meme 服务（${Config.getApiUrl()}）\n` +
-        '表情资源由服务提供方维护，本机拉仓库、改 config.toml、重启进程都作用不到它身上，\n' +
-        '所以这里只刷新本地索引（和 #meme刷新 一样）。\n' +
-        '👉 服务方更新了表情，你发这个就能同步到\n\n' +
-        '⏳ 正在刷新索引，要按表情逐个问服务，几十秒左右，完了会再回一条\n\n' +
-        '（如果 meme 服务其实就在这台机器上、想让插件接管资源，把配置 serviceMode 改成 local）'
+        '表情资源由服务提供方维护，这里只刷新本地索引。\n' +
+        '👉 服务方更新了表情，发这个就能同步到\n\n' +
+        '⏳ 正在刷新索引，几十秒左右，完了会再回一条'
       )
       return this.reloadOnly(e, true)
     }
@@ -142,10 +138,9 @@ export class memeUpdate extends plugin {
     if (!await MemeApi.ping() && !fs.existsSync(tomlPath()) &&
       !fs.existsSync(venvMemePath()) && !hasOurContainer) {
       await e.reply(
-        '❌ 这台机器上还没有 meme 服务，就不白下载几个 G 了\n' +
-        '#meme更新 只负责给已经装好的服务换表情资源\n\n' +
+        '❌ 这台机器上还没有 meme 服务\n' +
         '👉 要装服务发 #meme部署（第一次要几分钟）\n' +
-        '👉 连的是别人的服务，把配置 memeApiUrl 改成那个地址，再发这个就能同步'
+        '👉 连的是别人的服务，把配置里的服务地址改成那个，再发这个就能同步'
       )
       return true
     }
@@ -183,26 +178,26 @@ export class memeUpdate extends plugin {
       if (skipped?.length) {
         msgs.push(`⚠️ ${skipped.length} 个仓库的表情目录不存在，会被跳过：`)
         for (const k of skipped.slice(0, 4)) msgs.push(`　${k.name} → ${k.path}`)
-        msgs.push('　（多半是 memeSubDir 填错了，去锅巴面板确认）')
+        msgs.push('　（请主人到锅巴面板检查表情目录配置）')
       }
     } else {
       try {
         const s = syncMemeDirs()
         if (!s.ok) {
-          msgs.push(`⚠️ meme_dirs 同步失败：${s.reason}`)
-          msgs.push('新仓库可能加载不到，需手动改 config.toml')
+          msgs.push(`⚠️ 表情目录同步失败，请稍后重试`)
+          msgs.push('新仓库可能加载不到，请主人手动改 config.toml')
         } else if (s.changed) {
-          msgs.push(`\n📝 已登记 ${s.dirs.length} 个表情目录到 config.toml`)
+          msgs.push(`\n📝 已登记 ${s.dirs.length} 个表情目录`)
           if (s.added?.length) msgs.push(`＋ ${s.added.map(d => path.basename(path.dirname(d))).join('、')}`)
           if (s.removed?.length) msgs.push(`－ ${s.removed.map(d => path.basename(path.dirname(d))).join('、')}`)
         }
         if (s.skipped?.length) {
           msgs.push(`⚠️ ${s.skipped.length} 个仓库的表情目录不存在，已跳过：`)
           for (const k of s.skipped.slice(0, 4)) msgs.push(`　${k.name} → ${k.path}`)
-          msgs.push('　（多半是 memeSubDir 填错了，去锅巴面板确认）')
+          msgs.push('　（请主人到锅巴面板检查表情目录配置）')
         }
       } catch (err) {
-        msgs.push(`⚠️ meme_dirs 同步异常：${err.message}`)
+        msgs.push(`⚠️ 表情目录同步异常`)
       }
     }
 
@@ -262,7 +257,7 @@ export class memeUpdate extends plugin {
       const r = await MemeIndex.refreshFromApi()
       clearImageCaches()
       hotOk = true
-      msgs.push(`✅ 索引已热加载：${r.count} 个表情 / ${r.keywordCount} 个关键词`)
+      msgs.push(`✅ 索引已刷新：${r.count} 个表情 / ${r.keywordCount} 个关键词`)
       if (r.added.length) {
         msgs.push(`🆕 新增 ${r.added.length} 个：${r.added.slice(0, 12).join('、')}${r.added.length > 12 ? ' …' : ''}`)
         msgs.push('不用重启，现在直接发就能用~')
@@ -270,10 +265,10 @@ export class memeUpdate extends plugin {
         msgs.push('（关键词无变化）')
       }
       if (r.failed.length) {
-        msgs.push(`⚠️ 有 ${r.failed.length} 个没拉到 info，再发一次 #meme刷新 补上`)
+        msgs.push(`⚠️ 有 ${r.failed.length} 个没拉到，再发一次 #meme刷新 补上`)
       }
     } catch (err) {
-      msgs.push(`⚠️ 索引热加载失败：${err.message}`)
+      msgs.push(`⚠️ 索引刷新失败，请稍后重试`)
     }
 
     // ⑤ 热加载没成功才重启 Yunzai 兜底 —— 主人的要求是「不行的话也要顺便重启云崽」

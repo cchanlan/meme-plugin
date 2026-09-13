@@ -44,5 +44,5 @@ export function endTask () {
 
 /** 「有别的任务在跑」时回给用户的话 */
 export function busyTip (want) {
-  return `⏳ 正在执行「${runningTask()}」，${want} 得等它跑完\n（这几条指令会动同一批文件和同一个服务进程，不能同时来）`
+  return `⏳ 正在执行「${runningTask()}」，${want} 得等它跑完`
 }

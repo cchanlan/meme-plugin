@@ -103,15 +103,15 @@ async function slotToBuffer (raw, maxBytes) {
     })
     if (!r.ok) throw bad(`取 QQ ${s} 的头像失败：HTTP ${r.status}`)
     const buf = Buffer.from(await r.arrayBuffer())
-    if (buf.length >= maxBytes) throw bad('头像异常过大')
+    if (buf.length >= maxBytes) throw bad('头像太大，换张图试试')
     return buf
   }
 
   const m = /^data:([\w/+.-]+);base64,([\s\S]+)$/.exec(s)
-  if (!m) throw bad('图片格式不认识')
+  if (!m) throw bad('图片格式不支持')
   if (!m[1].startsWith('image/')) throw bad('只收图片')
   const buf = Buffer.from(m[2], 'base64')
-  if (!buf.length) throw bad('图片是空的')
+  if (!buf.length) throw bad('图片是空的，重新选一张')
   if (buf.length >= maxBytes) {
     throw bad(`图片 ${(buf.length / 1048576).toFixed(1)}MB，超过 ${(maxBytes / 1048576).toFixed(0)}MB 限制`)
   }

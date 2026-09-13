@@ -89,7 +89,7 @@ export class memeList extends plugin {
     // 索引不空但一个都不剩，只能是 blackMemes 把它们全拉黑了。
     // 不判的话下面会回「只有 0 页哦」，看着像插件坏了
     if (totalPages === 0) {
-      await e.reply('能看的表情一个都没有了 —— 配置 blackMemes 把它们全拉黑了，去掉几个再看看')
+      await e.reply('能看的表情一个都没有了，请主人检查黑名单配置')
       return true
     }
     const m = /(\d+)\s*$/.exec(e.msg)
@@ -98,7 +98,7 @@ export class memeList extends plugin {
       page = parseInt(m[1])
       if (page < 1) page = 1
       if (page > totalPages) {
-        await e.reply(`只有 ${totalPages} 页哦，第 ${page} 页不存在`)
+        await e.reply(`只有 ${totalPages} 页哦，第 ${page} 页不存在，改成 #meme列表 1 试试`)
         return true
       }
     } else {
@@ -120,7 +120,7 @@ export class memeList extends plugin {
       await e.reply(parts)
     } catch (err) {
       logger.error(`${logPrefix} 渲染列表失败: ${err.message}`)
-      await e.reply(`列表渲染失败：${err.message}`)
+      await e.reply(`列表渲染失败，请稍后重试`)
     }
     return true
   }
@@ -182,7 +182,7 @@ export class memeList extends plugin {
       await e.reply(parts)
     } catch (err) {
       logger.error(`${logPrefix} 渲染分类失败: ${err.message}`)
-      await e.reply(`分类出图失败：${err.message}`)
+      await e.reply(`分类出图失败，请稍后重试`)
     } finally {
       if (loc) unlinkQuietly(loc)
     }
@@ -199,7 +199,7 @@ export class memeList extends plugin {
     }
     const candidates = MemeIndex.randomCandidates()
     if (candidates.length === 0) {
-      await e.reply('索引里没有「只要一张图、不用配文字」的表情，随机不出来~\n发 #meme列表 挑一个吧')
+      await e.reply('没有能随机出来的表情，发 #meme列表 挑一个吧')
       return true
     }
     const code = candidates[_.random(0, candidates.length - 1, false)]
@@ -233,7 +233,7 @@ export class memeList extends plugin {
     const codes = MemeIndex.recentCodes(n)
 
     if (!codes.length) {
-      await e.reply('能看的表情一个都没有了 —— 配置 blackMemes 把它们全拉黑了')
+      await e.reply('能看的表情一个都没有了，请主人检查黑名单配置')
       return true
     }
 
@@ -253,7 +253,7 @@ export class memeList extends plugin {
       await e.reply(segment.image(`file://${loc}`))
     } catch (err) {
       logger.error(`${logPrefix} 渲染新增列表失败: ${err.message}`)
-      await e.reply(`列表渲染失败：${err.message}`)
+      await e.reply(`列表渲染失败，请稍后重试`)
     } finally {
       if (loc) unlinkQuietly(loc)
     }

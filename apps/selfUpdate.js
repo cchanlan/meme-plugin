@@ -146,7 +146,7 @@ export class memeSelfUpdate extends plugin {
     if (!fs.existsSync(path.join(pluginPath, '.git'))) {
       await e.reply(
         '❌ 插件目录不是 git 仓库，没法用指令更新\n' +
-        '（多半是下载 zip 解压装的）删掉目录重新 clone 一次就能用了：\n' +
+        '删掉目录重新 clone 一次就能用了：\n' +
         'git clone https://gitcode.com/ccxhan/meme-plugin.git'
       )
       return true

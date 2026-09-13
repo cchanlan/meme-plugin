@@ -120,7 +120,7 @@ export class memeFun extends plugin {
     let pool = safePool(MemeIndex.pairCandidates())
     pool = await dropProtectedIfMaster(pool, uids)
     if (!pool.length) {
-      await e.reply('没有能用的双人表情了 —— 看看 blackMemes / funExcludeWords 是不是把它们全过滤了')
+      await e.reply('没有能用的双人表情了，请主人检查黑名单配置')
       return true
     }
 
@@ -153,7 +153,7 @@ export class memeFun extends plugin {
       return true
     }
 
-    await e.reply('连试了几个表情都没成，八成是 meme 服务那边不舒服，发 #meme部署状态 看看', true)
+    await e.reply('连试了几个表情都没成，请主人发 #meme部署状态 看看', true)
     return true
   }
 
@@ -173,7 +173,7 @@ export class memeFun extends plugin {
     let pool = safePool(MemeIndex.randomCandidates())
     pool = await dropProtectedIfMaster(pool, [uid])
     if (!pool.length) {
-      await e.reply('没有能用的单图表情了 —— 看看 blackMemes / funExcludeWords 是不是把它们全过滤了')
+      await e.reply('没有能用的单图表情了，请主人检查黑名单配置')
       return true
     }
 
@@ -204,7 +204,7 @@ export class memeFun extends plugin {
 
     const picked = done.slice(0, n)
     if (!picked.length) {
-      await e.reply('一个都没做出来，发 #meme部署状态 看看服务还好吗', true)
+      await e.reply('一个都没做出来，请主人发 #meme部署状态 看看', true)
       return true
     }
 
@@ -292,7 +292,7 @@ export class memeFun extends plugin {
       // 拼图这一步也挂了（缺 puppeteer / 内存不足）就别浪费已经做好的图，
       // 挑第一张发出去，动图还是动的
       await replyImage(e, picked[0].buffer,
-        `拼图失败了（${err.message}），先给一张：#${nameOf(picked[0].code)}`,
+        `拼图失败了，先给一张：#${nameOf(picked[0].code)}`,
         picked[0].contentType)
     } finally {
       if (loc) unlinkQuietly(loc)
@@ -334,7 +334,7 @@ export class memeFun extends plugin {
         return true
       }
       if (codes.length > maxSteps) {
-        await e.reply(`最多叠 ${maxSteps} 层哦，叠多了图会大到发不出去`, true)
+        await e.reply(`最多叠 ${maxSteps} 层哦`, true)
         return true
       }
     } else {
@@ -342,7 +342,7 @@ export class memeFun extends plugin {
       let pool = safePool(nestCandidates())
       pool = await dropProtectedIfMaster(pool, [uid])
       if (!pool.length) {
-        await e.reply('没有能用的表情了 —— 看看 blackMemes / funExcludeWords 是不是把它们全过滤了')
+        await e.reply('没有能用的表情了，请主人检查黑名单配置')
         return true
       }
       // 多抽一批当备胎：静态模板会把动画压平（约占池子 13%），
@@ -369,7 +369,7 @@ export class memeFun extends plugin {
       autoPick
     })
     if (!steps.length) {
-      await e.reply('一层都没叠上，发 #meme部署状态 看看服务还好吗', true)
+      await e.reply('一层都没叠上，请主人发 #meme部署状态 看看', true)
       return true
     }
     for (const s of steps) {
@@ -478,7 +478,7 @@ export class memeFun extends plugin {
       picked.push({ buffer: res.buffer, contentType: res.contentType, name: _.trim(p.info.text, '@') })
     })
     if (!picked.length) {
-      await e.reply('一个都没做出来，发 #meme部署状态 看看服务还好吗', true)
+      await e.reply('一个都没做出来，请主人发 #meme部署状态 看看', true)
       return true
     }
     for (const p of picked) {
@@ -571,7 +571,7 @@ export class memeFun extends plugin {
     pool = await dropProtectedIfMaster(pool, [e.user_id])
     const pick = pickDaily(e.user_id, pool)
     if (!pick) {
-      await e.reply('没有能用的表情了 —— 看看 blackMemes / funExcludeWords 是不是把它们全过滤了')
+      await e.reply('没有能用的表情了，请主人检查黑名单配置')
       return true
     }
 
@@ -584,7 +584,7 @@ export class memeFun extends plugin {
     const res = await makeOne(pick.code, [buffer], [info])
     if (!res.ok) {
       logger.error(`${logPrefix} 今日表情 生成 ${pick.code} 失败: ${res.error}`)
-      await e.reply('表情没做出来，发 #meme部署状态 看看服务还好吗', true)
+      await e.reply('表情没做出来，请主人发 #meme部署状态 看看', true)
       return true
     }
     Stats.record({

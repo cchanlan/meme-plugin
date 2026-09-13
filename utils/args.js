@@ -129,7 +129,7 @@ export function handleArgs (key, info, args, userInfos) {
  * 直接读 schema 生成，覆盖全部 57 个带参表情，而不是硬编码那 21 段。
  */
 export function detail (code, info) {
-  if (!info) return '未找到该表情，试试 #meme更新'
+  if (!info) return '未找到该表情，请主人发 #meme更新'
   const pt = info.params_type || {}
   const keywords = (info.keywords || []).join('、')
   let ins = `【代码】${info.key || code}\n【名称】${keywords}\n【图片数量】${pt.min_images}~${pt.max_images}\n【文本数量】${pt.min_texts}~${pt.max_texts}\n`

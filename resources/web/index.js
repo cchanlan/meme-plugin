@@ -31,7 +31,7 @@ async function boot () {
     $('#stat').textContent = '数据加载失败'
     $('#empty').hidden = false
     $('#empty-title').textContent = '加载失败了'
-    $('#empty-hint').textContent = `${err.message} —— 刷新一下，或者让机器人主人看看 meme 服务还在不在`
+    $('#empty-hint').textContent = `刷新一下，或者让机器人主人看看 meme 服务还在不在`
   }
 }
 
@@ -458,7 +458,7 @@ async function make (m, box) {
     if (isGif) {
       const tip = document.createElement('div')
       tip.className = 'out-tip'
-      tip.textContent = '这是动图：右键「复制图像」粘到 QQ 会变成静态图，要点上面的按钮存成 .gif 再发（手机长按图片保存）'
+      tip.textContent = '存成 .gif 再发：点上面的按钮（手机长按图片保存）'
       out.appendChild(tip)
     }
   } catch (err) {

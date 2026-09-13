@@ -111,7 +111,7 @@ export function pm2 (args = [], { timeout = 120000 } = {}) {
       out: '',
       missing: true,
       err: IS_WIN
-        ? '找不到 pm2。装过的话多半是 Yunzai 还拿着旧的 PATH，重启 Yunzai 即可；没装就先 npm i -g pm2'
+        ? '找不到 pm2，重启 Yunzai 后再试一次；没装就先 npm i -g pm2'
         : '找不到 pm2，先装一个：npm i -g pm2'
     }
   }

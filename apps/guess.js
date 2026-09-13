@@ -89,7 +89,7 @@ export class memeGuess extends plugin {
     )
     pool = await dropProtectedIfMaster(pool, [e.user_id])
     if (!pool.length) {
-      await e.reply('没有能用来出题的表情了 —— 看看 blackMemes / funExcludeWords 是不是把它们全过滤了')
+      await e.reply('没有能用来出题的表情了，请主人检查黑名单配置')
       return true
     }
 
@@ -112,7 +112,7 @@ export class memeGuess extends plugin {
       break
     }
     if (!made) {
-      await e.reply('连试了几个表情都没成，八成是 meme 服务那边不舒服，发 #meme部署状态 看看', true)
+      await e.reply('连试了几个表情都没成，请主人发 #meme部署状态 看看', true)
       return true
     }
 

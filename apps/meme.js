@@ -73,7 +73,7 @@ export class memeMaker extends plugin {
     const { keyword: target, code: targetCode, info } = hit
     if (!info || !info.params_type) {
       logger.error(`${logPrefix} infos 中缺少 ${targetCode} 的数据`)
-      await e.reply('表情包数据异常，请执行 #meme更新 后重试~')
+      await e.reply('表情包数据异常，请主人发 #meme更新')
       return true
     }
 
@@ -236,7 +236,7 @@ export class memeMaker extends plugin {
       })
     } catch (err) {
       logger.error(`${logPrefix} 生成表情异常: ${err.message}`)
-      await e.reply(`表情生成失败：${err.message}`, true)
+      await e.reply(`表情生成失败，请稍后重试`, true)
     } finally {
       // 无论成功、服务端报错还是抛异常，都要清掉本轮下载的原图
       for (const loc of fileLocs) unlinkQuietly(loc)

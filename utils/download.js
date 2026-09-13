@@ -23,7 +23,7 @@ export async function fetchImage (url, maxBytes, timeoutMs) {
   const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   const tooBig = n => {
-    const err = new Error(`图片 ${(n / 1048576).toFixed(1)}MB，超过 ${(maxBytes / 1048576).toFixed(0)}MB 限制`)
+    const err = new Error(`图片太大（${(n / 1048576).toFixed(1)}MB，上限 ${(maxBytes / 1048576).toFixed(0)}MB），换张小点的`)
     err.oversize = true
     return err
   }

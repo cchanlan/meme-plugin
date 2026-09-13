@@ -119,7 +119,7 @@ async function menuText ({ bad, raw } = {}) {
   lines.push('🔹 不用 docker：#meme部署 venv')
   lines.push('   在本机装 Python 环境，需要 Python 3.9 以上、git、pm2', '')
   lines.push('装完直接发 #摸头 就能用。')
-  lines.push('别人给了你现成地址的话不用装，把配置 memeApiUrl 改成那个地址即可。')
+  lines.push('别人给了你现成地址的话不用装，把配置里的服务地址改成那个即可。')
   return lines.join('\n')
 }
 
@@ -249,7 +249,7 @@ export class memeDeploy extends plugin {
         lines.push('\n💡 容器在跑，但里面的服务连不上 —— 可能刚启动还在扫目录，也可能卡住了')
         lines.push(`   查一眼日志：docker logs ${cName}`)
       } else {
-        lines.push('\n💡 服务连不上。要么改配置 memeApiUrl 指向现成服务，')
+        lines.push('\n💡 服务连不上。要么改配置里的服务地址指向现成服务，')
         lines.push('   要么发 #meme部署 在本机装一个（可选）')
       }
     } else if (!local) {
@@ -257,7 +257,7 @@ export class memeDeploy extends plugin {
       lines.push('   服务方更新了表情，发 #meme更新 会自动同步索引')
     } else if (!fs.existsSync(venvBin) && !ourContainer) {
       lines.push('\n💡 服务在本机但不是插件部署的，#meme更新 会拉仓库并按')
-      lines.push(`   memePm2Name「${Config.get('memePm2Name')}」重启它`)
+      lines.push(`   配置里那个进程名「${Config.get('memePm2Name')}」重启它`)
     }
 
     await e.reply(lines.join('\n'))
@@ -339,7 +339,7 @@ export class memeDeploy extends plugin {
       port
     })
     if (!fs.existsSync(file)) {
-      await e.reply(`❌ 部署脚本不存在：${file}`)
+      await e.reply(`❌ 部署脚本不存在，请重新安装插件`)
       return true
     }
 
@@ -436,7 +436,7 @@ export class memeDeploy extends plugin {
       await e.reply(
         `❌ 端口 ${port} 已经被占用，容器起不来\n` +
         '👉 是你之前部署的服务占着的话：先发 #meme卸载 停掉它\n' +
-        '👉 想两套并存：去配置把 deployPort 改成别的端口'
+        '👉 想两套并存：去配置把部署端口改成别的'
       )
       return true
     }
@@ -553,7 +553,7 @@ export class memeDeploy extends plugin {
 
       child.on('error', err => {
         // ENOENT 就是解释器本身没找到，报清楚是哪个
-        const extra = err.code === 'ENOENT' ? `（找不到 ${cmd}，它不在 PATH 里）` : ''
+        const extra = err.code === 'ENOENT' ? `（找不到 ${cmd}）` : ''
         resolve({ ok: false, sawStep, errLines: [], messages: [...messages, `脚本执行异常：${err.message}${extra}`] })
       })
 

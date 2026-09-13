@@ -44,7 +44,7 @@ export async function syncRepos ({ onMessage } = {}) {
           ['clone', '--depth', '1', '-b', String(repo.branch || 'main'), url, repoPath],
           { timeout: 600000 }
         )
-        if (!c.ok) throw new Error(c.fatal || c.err || c.out || 'git clone 失败')
+        if (!c.ok) throw new Error(c.fatal || c.err || c.out || '克隆失败')
         result.cloned++
         result.hasUpdates = true
         msg(`📥 ${repo.name} 首次克隆完成`)
@@ -53,7 +53,7 @@ export async function syncRepos ({ onMessage } = {}) {
 
       const oldHead = await git(['rev-parse', 'HEAD'], { cwd: repoPath, timeout: 15000 })
       const pull = await git(['pull'], { cwd: repoPath, timeout: 600000 })
-      if (!pull.ok) throw new Error(pull.fatal || pull.err || pull.out || 'git pull 失败')
+      if (!pull.ok) throw new Error(pull.fatal || pull.err || pull.out || '拉取失败')
       const newHead = await git(['rev-parse', 'HEAD'], { cwd: repoPath, timeout: 15000 })
 
       if (oldHead.out && oldHead.out === newHead.out) {
@@ -79,7 +79,7 @@ export async function syncRepos ({ onMessage } = {}) {
       result.failed.push({ name: repo.name, error: err.message })
       let errMsg = `❌ ${repo.name} 失败：`
       if (err.message.includes('not a git repository')) errMsg += '目录不是 git 仓库'
-      else if (/Could not resolve host|Failed to connect/i.test(err.message)) errMsg += '网络不通，检查 gitProxy'
+      else if (/Could not resolve host|Failed to connect/i.test(err.message)) errMsg += '网络不通，检查代理配置'
       else if (err.message.includes('Authentication failed')) errMsg += '认证失败'
       else errMsg += err.message.split('\n')[0].slice(0, 60)
       msg(errMsg)
