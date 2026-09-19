@@ -150,4 +150,6 @@ git clone --depth=1 https://github.com/cchanlan/meme-plugin.git ./plugins/meme-p
 
 仅供学习交流，别拿表情包去做坏事。
 
+## 开源协议
 
+[MIT](LICENSE) © 2026 cchanlan
