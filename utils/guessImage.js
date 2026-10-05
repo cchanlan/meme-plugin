@@ -2,7 +2,7 @@ import path from 'node:path'
 import { dataDir } from '../constants/path.js'
 import { mkdirs } from './file.js'
 import { qqAvatar } from './user.js'
-import { shotHtml, THEME_CSS, IMG_EXT } from './browser.js'
+import { shotHtml, THEME_CSS, getImgExt } from './browser.js'
 
 /**
  * 猜表情榜出图。
@@ -160,6 +160,6 @@ ${s.groups.map((g, i) => {
 
   const dir = path.join(dataDir, 'list_cache')
   mkdirs(dir)
-  const loc = path.join(dir, `guess_${Date.now()}_${process.pid}${IMG_EXT}`)
+  const loc = path.join(dir, `guess_${Date.now()}_${process.pid}${getImgExt()}`)
   return shotHtml(html, loc, { width: WIDTH, scale: 2.5 })
 }

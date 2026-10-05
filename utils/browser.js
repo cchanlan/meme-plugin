@@ -8,8 +8,10 @@
  * 免得没人玩表情的时候还挂着一份 200MB+ 的 Chromium。
  */
 
+import fs from 'node:fs'
 import process from 'node:process'
 import Config from '../model/config.js'
+import { logPrefix } from '../constants/path.js'
 
 let browserPromise = null
 /** 当前实例，用来判断 disconnected 事件是不是「现役」那一个发出来的 */
@@ -128,17 +130,45 @@ function scheduleIdleClose () {
   idleTimer.unref?.()
 }
 
+/** 出图格式的可选值（跟锅巴「输出图片类型」下拉一致） */
+const IMG_TYPES = ['jpeg', 'png', 'webp']
+
 /**
- * 出图统一用 webp：同一张图实测 scale 2.5 + webp q82 比原来 scale 2 + jpeg q92
- * 体积更小、分辨率更高、失真更低（webp 的 q82 视觉上相当于 jpeg 的 q90+）。
- * QQ 客户端认 webp（2026-08-31 真机验过 #meme帮助）。
- * 扩展名必须跟内容一致 —— NapCat 上传按后缀判 MIME，所以文件名也从这里取。
+ * 出图格式，读配置项 `img_type`，默认 jpeg。
+ *
+ * 原来是写死的 webp 常量。webp 在 QQ 上很好（同一张图实测 scale 2.5 + webp q82
+ * 比原来 scale 2 + jpeg q92 体积更小、分辨率更高、失真更低，q82 视觉上相当于 jpeg q90+），
+ * 但**微信（ComWeChat）适配器的图片接口不认 webp**：会把它降级成「文件」发出去，
+ * 群友收到的是 xxx.webp 文件卡片而不是图。所以默认改成最保险的 jpeg。
+ *
+ * ⚠️ 必须是**函数**而不是常量：meme 插件支持热更（apps 重新加载），
+ * 常量只在模块首次加载时求一次值，用户在锅巴里改完格式得重启进程才生效。
+ * 函数每次都重新读配置，改完下次出图就生效。
  */
-export const IMG_FORMAT = 'webp'
-export const IMG_EXT = '.webp'
+export function getImgFormat () {
+  try {
+    const raw = String(Config.get('img_type') ?? '').trim().toLowerCase()
+    if (raw === 'jpg' || raw === 'image/jpeg') return 'jpeg'
+    return IMG_TYPES.includes(raw) ? raw : 'jpeg'
+  } catch (_) {
+    return 'jpeg'
+  }
+}
+
+/**
+ * 当前格式的扩展名（带点）。
+ *
+ * 必须跟内容一致 —— NapCat 上传按后缀判 MIME，后缀写错会被当成别的类型。
+ * 所以文件名统一从这里取，别在调用点手写 `.webp`。
+ */
+export function getImgExt () {
+  return `.${getImgFormat()}`
+}
+
+/** 默认质量：webp / jpeg 都用它。png 是无损的，用不上 */
 export const IMG_QUALITY = 82
 
-/** sharp 是主仓库自带的，缺了也要能跑——退回 Chromium 内置 jpeg 编码 */
+/** sharp 是主仓库自带的，缺了也要能跑——退回 Chromium 内置编码器 */
 let sharpMod = null
 let sharpChecked = false
 async function getSharp () {
@@ -153,26 +183,57 @@ async function getSharp () {
 }
 
 /**
+ * 把一张无损 png 编成目标格式。
+ *
+ * 走「渲染器出 png → sharp 二次编码」而不是让 Chromium 直接出目标格式：
+ * Chromium 用的是内置编码器，实测 mozjpeg 同 quality 下比它小约 18%、webp 更小得多；
+ * png 是无损的所以二次编码不累积失真。
+ *
+ * jpeg 优先用 mozjpeg，失败退回普通编码器 —— 这选项依赖 sharp 编译时带上 mozjpeg，
+ * 个别平台 / 自编译的 sharp 会直接抛，不能让它把整张图搞没。
+ *
+ * @param {Buffer} png 源图（无损 png 最理想）
+ * @param {{format?:'jpeg'|'png'|'webp', quality?:number}} opts
+ * @returns {Promise<Buffer|null>} 编码失败返回 null，调用方自己决定退路
+ */
+export async function encodeShot (png, { format = getImgFormat(), quality = IMG_QUALITY } = {}) {
+  const sharp = await getSharp()
+  if (!sharp) return null
+  try {
+    if (format === 'png') return await sharp(png).png().toBuffer()
+    if (format === 'webp') return await sharp(png).webp({ quality }).toBuffer()
+    try {
+      return await sharp(png).jpeg({ quality, chromaSubsampling: '4:4:4', mozjpeg: true }).toBuffer()
+    } catch (_) {
+      return await sharp(png).jpeg({ quality, chromaSubsampling: '4:4:4' }).toBuffer()
+    }
+  } catch (err) {
+    logger.debug(`${logPrefix} 编码 ${format} 失败: ${err.message}`)
+    return null
+  }
+}
+
+/**
  * 渲染一段 HTML 并截图。
  *
  * 截 body 而不是 fullPage：内容撑不满 viewport 时 fullPage 会在底下补一片空白，
  * 小结果图会多出一大截白边，还把宽高比算歪、在 QQ 里宽度顶不满气泡。
  *
- * 编码走「无损 png → sharp」而不是让 Chromium 直接出 jpeg：Chromium 只能出
- * jpeg/png/webp 且用的是内置编码器，实测 mozjpeg 同 quality 下比它小约 18%、
- * webp 更小得多；png 是无损的所以二次编码不累积失真。sharp 缺失时退回内置 jpeg。
+ * 出图格式默认读配置（见 getImgFormat），也可以由 opts.format 显式指定。
  *
- * loc 的扩展名由调用方保证与 format 一致（用 IMG_EXT），这里不改路径。
+ * ⚠️ **loc 的扩展名由调用方保证与格式一致**（用 getImgExt()）：NapCat 上传按后缀
+ * 判 MIME，`xxx.webp` 里装着 jpeg 会被当成 webp 发。这里刻意不帮调用方改路径 ——
+ * gridImage 是「先写临时名再 rename」的，这里偷偷换掉扩展名会让它 rename 失败。
  *
  * 出图完了浏览器不会一直留着：并发的任务都结束后按 browserIdleSec 计时关掉。
  *
  * @param {string} html 完整 HTML
  * @param {string} loc 输出路径
- * @param {{width:number, scale?:number, quality?:number, format?:'jpeg'|'webp'}} opts
+ * @param {{width:number, scale?:number, quality?:number, format?:'jpeg'|'png'|'webp'}} opts
  * @returns {Promise<string>} 写出的路径（就是传入的 loc）
  */
 export async function shotHtml (html, loc, opts = {}) {
-  const { width, scale = 2, quality = IMG_QUALITY, format = IMG_FORMAT } = opts
+  const { width, scale = 2, quality = IMG_QUALITY, format = getImgFormat() } = opts
   activeTasks++
   // 先撤掉待关闭的定时器：不然它可能正好在这张图用实例的当口把浏览器关了
   cancelIdleClose()
@@ -185,16 +246,23 @@ export async function shotHtml (html, loc, opts = {}) {
     const body = await page.$('body')
     const sharp = await getSharp()
     if (!sharp) {
-      // 没有 sharp 只能用 Chromium 内置编码器，它也支持 webp
-      await body.screenshot({ path: loc, type: format === 'webp' ? 'webp' : 'jpeg', quality })
+      // 没有 sharp 只能用 Chromium 内置编码器，它也支持 png / jpeg / webp。
+      // ⚠️ png 是无损的，**传 quality 会直接抛错**（puppeteer：「png screenshots
+      // do not support 'quality'」，25.x 实测），所以只有有损格式才带上它。
+      const shotOpts = { path: loc, type: format }
+      if (format !== 'png') shotOpts.quality = quality
+      await body.screenshot(shotOpts)
       return loc
     }
     const png = await body.screenshot({ type: 'png' })
-    const img = sharp(png)
-    await (format === 'webp'
-      ? img.webp({ quality })
-      : img.jpeg({ quality, mozjpeg: true })
-    ).toFile(loc)
+    const out = await encodeShot(png, { format, quality })
+    if (out) {
+      fs.writeFileSync(loc, out)
+      return loc
+    }
+    // sharp 在但编码挂了：别退回 Chromium 再截一次（白多一次页面操作），
+    // png 是无损的，直接落原图也能发出去
+    fs.writeFileSync(loc, png)
     return loc
   } finally {
     if (page) await page.close().catch(() => {})

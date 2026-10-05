@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { dataDir } from '../constants/path.js'
 import { mkdirs } from './file.js'
-import { shotHtml, THEME_CSS, IMG_EXT } from './browser.js'
+import { shotHtml, THEME_CSS, getImgExt } from './browser.js'
 
 /**
  * 帮助图（粉白蓝主题，和 Web 预览站、搜索网格图同一套配色）。
@@ -191,8 +191,8 @@ ${web ? `<div class="ft">🌟 <b>在线预览</b>　${esc(web)}</div>` : ''}
 
   const dir = path.join(dataDir, 'list_cache')
   mkdirs(dir)
-  const loc = path.join(dir, `help_${Date.now()}_${process.pid}${IMG_EXT}`)
-  // scale 2.5：帮助图字多，缩放后要点开还能看清；webp 下这个分辨率仍比原来 jpeg 小
+  const loc = path.join(dir, `help_${Date.now()}_${process.pid}${getImgExt()}`)
+  // scale 2.5：帮助图字多，缩放后要点开还能看清
   return shotHtml(html, loc, { width: 900, scale: 2.5 })
 }
 
