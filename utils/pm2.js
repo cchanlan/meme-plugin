@@ -122,7 +122,11 @@ export function pm2 (args = [], { timeout = 120000 } = {}) {
   return {
     ok: !r.error && r.status === 0,
     out: String(r.stdout || '').trim(),
-    err: String(r.stderr || '').trim() || (r.error ? r.error.message : ''),
+    // 被信号杀掉时 stderr 也是空的 —— 不写明的话调用方会把 stdout 第一行
+    // （pm2 那句无害的 `Use --update-env...` 提示）当成错误放出来，把人带沟里去
+    err: String(r.stderr || '').trim()
+      || (r.error ? r.error.message : '')
+      || (r.signal ? `pm2 命令被信号 ${r.signal} 终止（多半是同一时刻云崽自己被重启，连带杀了它）` : ''),
     missing: false
   }
 }

@@ -8,7 +8,7 @@ import { logPrefix } from '../constants/path.js'
 import { syncMemeDirs, tomlPath, venvMemePath } from '../utils/memeDirs.js'
 import { syncRepos } from '../utils/repos.js'
 import { clearImageCaches } from '../utils/cleanup.js'
-import { pm2 } from '../utils/pm2.js'
+import { pm2, pm2Proc } from '../utils/pm2.js'
 import { containerInfo, isOurs, memeDirsEnv, recreateContainer, containerLogs } from '../utils/docker.js'
 import { beginTask, endTask, busyTip } from '../utils/lock.js'
 
@@ -231,14 +231,30 @@ export class memeUpdate extends plugin {
       // 直接 execSync('pm2 …') 会报 command not found，很容易被当成进程名填错
       const r = pm2(['restart', pm2Name])
       if (!r.ok) {
-        msgs.push(`❌ meme 服务重启失败：${(r.err || r.out || 'pm2 restart 失败').split('\n')[0]}`)
-        msgs.push(r.missing
-          ? '（这台机器上找不到 pm2 命令，不是进程名的问题）'
-          : `请检查 pm2 里的进程名是否叫「${pm2Name}」，可在配置里改 memePm2Name`)
-        await e.reply(msgs.join('\n'))
-        return true
+        // restart 的 RPC 发出去后守护进程就会执行到底 —— 这里 CLI 返回失败，
+        // 多半是 CLI 自己中途被信号杀了（典型场景：同一时刻云崽被重启，进程组连带被杀）。
+        // 等一拍看真实状态：进程刚起来过就当成功继续走，别误报吓主人。
+        // 2026-10-06 实测过：19:17:35 云崽被 pm2 restart 的同时 meme 的 restart CLI
+        // 被 SIGTERM 杀掉，spawnSync 返回 status:null/stderr 空，误报成「重启失败」，
+        // 而 meme 实际在 19:17:36 就重启上线了。
+        await new Promise(res => setTimeout(res, 5000))
+        const proc = pm2Proc(pm2Name)
+        const restarted = proc?.pm2_env?.status === 'online' &&
+          Date.now() - (proc.pm2_env.pm_uptime || 0) < 120000
+        if (!restarted) {
+          msgs.push(`❌ meme 服务重启失败：${(r.err || r.out || 'pm2 restart 失败').split('\n')[0]}`)
+          msgs.push(r.missing
+            ? '（这台机器上找不到 pm2 命令，不是进程名的问题）'
+            : r.err?.includes('被信号')
+              ? `稍后发 #meme状态 确认服务是否已自行恢复`
+              : `请检查 pm2 里的进程名是否叫「${pm2Name}」，可在配置里改 memePm2Name`)
+          await e.reply(msgs.join('\n'))
+          return true
+        }
+        msgs.push(`✅ meme 服务重启成功（pm2 命令途中被杀，但服务实际已重启：${r.err?.split('\n')[0] || '详见日志'}）`)
+      } else {
+        msgs.push('✅ meme 服务重启成功')
       }
-      msgs.push('✅ meme 服务重启成功')
     }
 
     // ③ 等服务重新扫描完 meme_dirs。
