@@ -12,7 +12,7 @@
 - `#抽个cp` 随机配对群友、`#整活 @某人` 连出 6 个表情
 - `#套娃 摸头 踩 恐龙` 把头像一层层叠进表情里、`#全群摸头` 随机几个群友一起做
 - `#今日表情` 每天固定一个表情配运势、`#猜表情` 出图让群友猜名字得分
-- `#meme排行` 看本群谁最能整活，`#meme总排行` 所有群一起排；撅主人会被反撅 🙂
+- `#meme排行` 看本群谁最能整活，`#meme总排行` 所有群一起排；对主人出手会被反弹 🙂
 - 群开关、拉黑人 / 拉黑表情、`#meme更新` 一句话升级
 
 ## 装起来
@@ -121,7 +121,7 @@ git clone --depth=1 https://github.com/cchanlan/meme-plugin.git ./plugins/meme-p
 | `nestMaxSteps` / `nestMaxSize` | `3` / `4` | 套娃最多叠几层、单层超过几 MB 就停手 |
 | `crowdCount` | `6` | `#全群摸头` 抽几个群友 |
 | `enableGuess` / `guessTimeout` | `true` / `60` | 猜表情开关、一局时限（秒） |
-| `masterProtect` | `true` | 撅主人会被反撅 |
+| `masterProtect` | `true` | 对主人出手会被反弹（目前只支持 QQ） |
 | `blackUsers` / `blackMemes` | 空 | 拉黑的人 / 表情 |
 | `img_type` | `jpeg` | 出图格式：`jpeg`（推荐，全平台通用）/ `png`（无损，最大）/ `webp`（最小，但微信下会变成文件） |
 | `browserIdleSec` | `60` | 出图的 Chromium 空闲几秒就关掉，省内存；`0` 为每张出完立刻关 |
