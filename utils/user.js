@@ -97,7 +97,7 @@ export async function getAvatarUrl (e, uid) {
 export async function getSelfAvatarUrl (e) {
   const uid = e.sender?.user_id ?? e.user_id
   if (typeof e.getAvatarUrl === 'function') {
-    const url = await e.getAvatarUrl(0).catch(() => '')
+    const url = await Promise.resolve(e.getAvatarUrl(0)).catch(() => '')
     if (url) return url
   }
   if (typeof e.sender?.avatar === 'string' && e.sender.avatar) return e.sender.avatar
