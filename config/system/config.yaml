@@ -251,11 +251,11 @@ repos:
     url: "https://github.com/LRZ9712/tudou-meme"
     branch: main
     memeSubDir: meme
-# GitHub 代理前缀，留空为直连（推荐，本机通常已配 git 代理）。
-# 直连不通（git 报 Connection was reset / port 443 超时）时可填前缀型镜像，
-# 2026-10-26 实测可用：https://ghfast.top/ 或 https://ghproxy.net/
-# 公共镜像会挂，git 报 403/522 就是它挂了，清空改回直连即可
-gitProxy: ""
+# GitHub 代理前缀。默认走 ghfast.top 镜像：国内直连 github.com 基本都是
+# Connection was reset / port 443 超时，默认镜像能让第一次部署直接成功。
+# 机器本身能直连（或已配系统级 git 代理）的话，清空这一项走直连更快。
+# 镜像挂了（git 报 403/522）也清空即可 —— 直连和另一个镜像都会自动兜底
+gitProxy: "https://ghfast.top/"
 
 # ===== 可选部署 =====
 # 是否已经用 #meme部署 部署过本机服务。部署成功后自动置 true

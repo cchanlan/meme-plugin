@@ -243,13 +243,16 @@ foreach ($repo in $Repos) {
     if (Test-Path $target) { Remove-Item -Recurse -Force $target -ErrorAction SilentlyContinue }
 
     $urls = @($fullUrl)
-    # 用户配了 GitProxy 就只走他的；没配才拿公共镜像兜底
-    if (-not $GitProxy) {
-      if ($GhMirror) { $urls = @("$GhMirror$($repo.url)") + $urls }
-      foreach ($m in $GhMirrors) {
-        $c = "$m$($repo.url)"
-        if ($urls -notcontains $c) { $urls += $c }
-      }
+    # 本次部署里已经探到的镜像优先；然后配置里的前缀（$fullUrl）、直连、其余镜像。
+    # 三条路都留着 —— 前缀镜像自己也会挂，关掉兜底等于锁死在一条死路上
+    if ($GhMirror) {
+      $c = "$GhMirror$($repo.url)"
+      if ($urls -notcontains $c) { $urls = @($c) + $urls }
+    }
+    if ($urls -notcontains $repo.url) { $urls += $repo.url }
+    foreach ($m in $GhMirrors) {
+      $c = "$m$($repo.url)"
+      if ($urls -notcontains $c) { $urls += $c }
     }
 
     $cloned = $false
@@ -261,7 +264,7 @@ foreach ($repo in $Repos) {
         $cloned = $true
         if ($u -ne $repo.url) {
           $GhMirror = $u.Substring(0, $u.Length - $repo.url.Length)
-          Write-Output "  ✓ $($repo.dir) 克隆完成（GitHub 直连不通，走了镜像 $GhMirror）"
+          Write-Output "  ✓ $($repo.dir) 克隆完成（走镜像 $GhMirror）"
         } else {
           Write-Output "  ✓ $($repo.dir) 克隆完成"
         }

@@ -49,14 +49,16 @@ const FALLBACK_MIRRORS = ['https://ghfast.top/', 'https://ghproxy.net/']
  * @returns {Promise<{ok: true, viaMirror: string} | {ok: false, error: string}>}
  */
 async function cloneRepo (repo, repoPath, preferredMirror) {
-  const custom = String(Config.get('gitProxy') || '').trim()
   const urls = []
   const push = u => { if (u && !urls.includes(u)) urls.push(u) }
 
   if (preferredMirror) push(preferredMirror + repo.url)
+  // 配置里的前缀（默认就是镜像）、直连、其余镜像 —— 三条路都留着。
+  // 不能因为「用户配了前缀」就把兜底关掉：前缀镜像本身也会挂，
+  // 关了兜底等于把人锁死在一条死路上
   push(Config.proxyUrl(repo.url))
-  // 用户配了代理就只认他的，公共镜像只在「什么都没配」时兜底
-  if (!custom) FALLBACK_MIRRORS.forEach(m => push(m + repo.url))
+  push(repo.url)
+  FALLBACK_MIRRORS.forEach(m => push(m + repo.url))
 
   let error = '克隆失败'
   for (const url of urls) {
@@ -98,7 +100,7 @@ export async function syncRepos ({ onMessage } = {}) {
         if (r.viaMirror) mirror = r.viaMirror
         result.cloned++
         result.hasUpdates = true
-        msg(`📥 ${repo.name} 首次克隆完成${r.viaMirror ? `（GitHub 直连不通，走了镜像 ${r.viaMirror}）` : ''}`)
+        msg(`📥 ${repo.name} 首次克隆完成${r.viaMirror ? `（走镜像 ${r.viaMirror}）` : ''}`)
         continue
       }
 

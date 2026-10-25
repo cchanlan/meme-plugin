@@ -389,7 +389,7 @@ export function supportGuoba () {
         {
           field: 'gitProxy',
           label: 'GitHub 代理前缀',
-          bottomHelpMessage: '留空为直连（推荐，本机已配 git 代理）。只有直连不通、且没有系统级代理时才填前缀型镜像，实测可用：https://ghfast.top/ 或 https://ghproxy.net/ 。这类公共镜像经常失效，报 403/522 就是它挂了，清空即可',
+          bottomHelpMessage: '默认 https://ghfast.top/ ：国内直连 github.com 基本不通，走镜像才能拉到表情仓库。机器能直连（或配了系统级 git 代理）就清空这一项，直连更快；镜像挂了也清空，直连和另一个镜像会自动兜底',
           component: 'Input'
         },
         {

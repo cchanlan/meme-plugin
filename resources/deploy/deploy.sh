@@ -213,6 +213,16 @@ fi
 step "拉取表情资源仓库"
 mkdir -p "$REPOS_DIR"
 MEME_DIRS=""
+
+# 往本轮候选列表 urls 里加一条，已经有的跳过。
+# 必须按整串比，不能拿子串判：镜像地址本身就包含直连地址
+# （https://ghfast.top/https://github.com/...），子串匹配会让直连那条永远加不进去
+add_url () {
+  local u="$1" e
+  for e in "${urls[@]}"; do [ "$e" = "$u" ] && return 0; done
+  urls+=("$u")
+}
+
 for item in "${REPOS[@]}"; do
   IFS='|' read -r dir url branch subdir <<< "$item"
   target="$REPOS_DIR/$dir"
@@ -227,13 +237,11 @@ for item in "${REPOS[@]}"; do
     # 下一次再 clone 就是「already exists and is not an empty directory」，永远好不了
     rm -rf "$target"
     urls=("$full_url")
-    # 用户配了 GIT_PROXY 就只走他的；没配才拿公共镜像兜底
-    if [ -z "$GIT_PROXY" ]; then
-      [ -n "$GH_MIRROR" ] && urls=("$GH_MIRROR$url" "${urls[@]}")
-      for m in "${GH_MIRRORS[@]}"; do
-        [[ "${urls[*]}" == *"$m$url"* ]] || urls+=("$m$url")
-      done
-    fi
+    # 本次部署里已经探到的镜像优先；然后配置里的前缀（就是 $full_url）、直连、
+    # 其余镜像 —— 三条路都留着，前缀镜像自己也会挂，关掉兜底等于锁死在一条死路上
+    [ -n "$GH_MIRROR" ] && add_url "$GH_MIRROR$url"
+    add_url "$url"
+    for m in "${GH_MIRRORS[@]}"; do add_url "$m$url"; done
 
     cloned=0
     for u in "${urls[@]}"; do
@@ -241,7 +249,7 @@ for item in "${REPOS[@]}"; do
         cloned=1
         if [ "$u" != "$url" ]; then
           GH_MIRROR="${u%"$url"}"
-          echo "  ✓ $dir 克隆完成（GitHub 直连不通，走了镜像 $GH_MIRROR）"
+          echo "  ✓ $dir 克隆完成（走镜像 $GH_MIRROR）"
         else
           echo "  ✓ $dir 克隆完成"
         fi
