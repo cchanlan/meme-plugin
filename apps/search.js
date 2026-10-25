@@ -3,6 +3,7 @@ import MemeIndex from '../model/memeIndex.js'
 import { renderGrid } from '../utils/gridImage.js'
 import { unlinkQuietly } from '../utils/file.js'
 import { blocked, emptyIndexTip } from '../utils/guard.js'
+import { withSendTarget } from '../utils/webLink.js'
 import { logPrefix } from '../constants/path.js'
 
 export class memeSearch extends plugin {
@@ -37,7 +38,9 @@ export class memeSearch extends plugin {
     const hits = MemeIndex.search(query)
     // 命中时不附链接：出图那类回复每条都甩一串域名太占版面，
     // 只有「没找到」和「出图失败」才给 Web 站兜底入口
-    const webLink = Config.get('enableWeb') ? `\n🔍 搜索预览：${Config.getWebUrl()}/memes` : ''
+    const webLink = Config.get('enableWeb')
+      ? `\n🔍 搜索预览：${withSendTarget(`${Config.getWebUrl()}/memes`, e)}`
+      : ''
 
     if (hits.length === 0) {
       const tags = MemeIndex.getTags().filter(t => t.tag.includes(query)).slice(0, 5)

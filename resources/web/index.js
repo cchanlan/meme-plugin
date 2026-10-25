@@ -240,6 +240,18 @@ let textEls = []
 let argEls = []
 let nickEl = null
 let lastOut = ''
+// 最近一次生成的结果：站内发送直接用这个 Blob，不从页面上的 <img> 再取一遍
+let lastBlob = null
+
+/**
+ * 机器人发到群里的链接带 `?g=<群号>&u=<触发人>&e=<过期>&s=<签名>`。
+ * 页面只负责把这张图发回去，签名由服务端验 —— 前端改不动目标。
+ */
+const SEND = (() => {
+  const q = new URLSearchParams(location.search)
+  if (!q.get('s') || (!q.get('g') && !q.get('u'))) return null
+  return { g: q.get('g') || '', u: q.get('u') || '', e: q.get('e') || '', s: q.get('s') }
+})()
 
 function readAsDataURL (f) {
   return new Promise((resolve, reject) => {
@@ -326,6 +338,9 @@ function buildMake (m) {
   slotBox.innerHTML = ''
   fieldBox.innerHTML = ''
   out.innerHTML = ''
+  // 换了表情就把上一张的结果丢掉：不然「发到本群」发出去的是上一个表情
+  lastBlob = null
+  box.querySelector('.make-send').hidden = true
   slots = []
   textEls = []
   argEls = []
@@ -443,7 +458,11 @@ async function make (m, box) {
     // 上一张的 objectURL 不撤掉，连点几次就把 blob 全留在内存里了
     if (lastOut) URL.revokeObjectURL(lastOut)
     lastOut = URL.createObjectURL(blob)
+    lastBlob = blob
     const isGif = blob.type === 'image/gif'
+    // 静态模板（比如舔脚）出来的也是 .gif，只是只有 1 帧。
+    // 不看帧数就一律写「保存 GIF」，用户下下来发现不动只会以为生成坏了
+    const animated = isGif && Number(r.headers.get('X-Meme-Frames') || 0) > 1
     const img = document.createElement('img')
     img.className = 'out-img'
     img.src = lastOut
@@ -451,16 +470,22 @@ async function make (m, box) {
     save.className = 'out-save'
     save.href = lastOut
     save.download = `${m.key}.${blob.type.split('/')[1] || 'gif'}`
-    save.textContent = isGif ? '⬇ 保存 GIF' : '⬇ 保存图片'
+    save.textContent = animated ? '⬇ 保存 GIF' : '⬇ 保存图片'
     out.append(img, save)
     // 浏览器的右键「复制图像」是把图**解码成位图**放进剪贴板的（剪贴板只认 PNG），
     // GIF 这么复制过去就只剩第一帧 —— 不是这里生成错了，所以得当场说清楚怎么发才对
-    if (isGif) {
+    if (animated) {
       const tip = document.createElement('div')
       tip.className = 'out-tip'
       tip.textContent = '存成 .gif 再发：点上面的按钮（手机长按图片保存）'
       out.appendChild(tip)
+    } else if (isGif) {
+      const tip = document.createElement('div')
+      tip.className = 'out-tip'
+      tip.textContent = '这个表情本身就是静态的（单帧），存下来不会动'
+      out.appendChild(tip)
     }
+    showSend(box)
   } catch (err) {
     const tip = document.createElement('div')
     tip.className = 'out-err'
@@ -469,6 +494,49 @@ async function make (m, box) {
   } finally {
     btn.disabled = false
     btn.textContent = '再生成一次'
+  }
+}
+
+/** 生成成功后露出「发到本群 / 私发给我」；链接里没带哪个目标就不显示哪个按钮 */
+function showSend (box) {
+  if (!SEND) return
+  const row = box.querySelector('.make-send')
+  row.querySelector('[data-to="group"]').hidden = !SEND.g
+  row.querySelector('[data-to="user"]').hidden = !SEND.u
+  row.hidden = false
+}
+
+/** 把当前这张结果发回机器人，由机器人转到群里 / 私聊 */
+async function sendResult (btn) {
+  if (!lastBlob) {
+    toast('先点一下「生成表情」')
+    return
+  }
+  const to = btn.dataset.to
+  const all = [...document.querySelectorAll('.send-go')]
+  const label = btn.textContent
+  for (const b of all) b.disabled = true
+  btn.textContent = '发送中…'
+  try {
+    const q = new URLSearchParams(SEND)
+    q.set('to', to)
+    // 直接发原始字节：前端手上就是 Blob，再包 base64 只会多传 1/3
+    const r = await fetch(`/memes/send?${q}`, {
+      method: 'POST',
+      headers: { 'Content-Type': lastBlob.type || 'image/gif' },
+      body: lastBlob
+    })
+    if (!r.ok) {
+      let msg = 'HTTP ' + r.status
+      try { msg = (await r.json()).error || msg } catch {}
+      throw new Error(msg)
+    }
+    toast(to === 'group' ? '已发到本群' : '已私发给你')
+  } catch (err) {
+    toast('发送失败：' + err.message)
+  } finally {
+    for (const b of all) b.disabled = false
+    btn.textContent = label
   }
 }
 
@@ -491,6 +559,9 @@ $('#clear').onclick = () => {
 
 $('#sheet').querySelector('.sheet-bg').onclick = closeSheet
 $('#sheet').querySelector('.sheet-close').onclick = closeSheet
+for (const btn of document.querySelectorAll('.send-go')) {
+  btn.onclick = () => sendResult(btn)
+}
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeSheet()
 })

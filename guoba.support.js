@@ -312,6 +312,21 @@ export function supportGuoba () {
           componentProps: { min: 1, max: 120 }
         },
         {
+          field: 'enableWebSend',
+          label: '站内直接发群/私聊',
+          bottomHelpMessage:
+            '生成完不用下载再发：从群里链接打开的页面会多出「发到本群 / 私发给我」两个按钮。' +
+            '目标跟着链接走（带签名），别人直接打开网址发不了',
+          component: 'Switch'
+        },
+        {
+          field: 'webSendLimit',
+          label: '每个群每分钟最多发几张',
+          bottomHelpMessage: '链接在群里谁都能点，靠这个挡住连点刷屏',
+          component: 'InputNumber',
+          componentProps: { min: 1, max: 60 }
+        },
+        {
           field: 'enablePreviewCache',
           label: '预览图落盘缓存',
           bottomHelpMessage: '服务端预览接口没有缓存，建议开启。全量约 166MB',

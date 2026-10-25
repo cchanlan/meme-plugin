@@ -7,12 +7,14 @@ import { renderGrid } from '../utils/gridImage.js'
 import { getImgExt } from '../utils/browser.js'
 import { dataPath, ensureDir, unlinkQuietly } from '../utils/file.js'
 import { blocked, emptyIndexTip } from '../utils/guard.js'
+import { withSendTarget } from '../utils/webLink.js'
 import { logPrefix } from '../constants/path.js'
 
 /** 群里发的 Web 站入口，统一文案；图里不画链接（图上的 URL 点不了） */
-function webLine () {
+function webLine (e) {
   if (!Config.get('enableWeb')) return ''
-  return `🔍 搜索预览：${Config.getWebUrl()}/memes`
+  // 带上「哪个群、谁触发的」签名，网页里才有「发到本群 / 私发给我」两个按钮
+  return `🔍 搜索预览：${withSendTarget(`${Config.getWebUrl()}/memes`, e)}`
 }
 
 /**
@@ -114,7 +116,7 @@ export class memeList extends plugin {
       const loc = await renderPage(pageCodes, page, totalPages, `page_${page}_${pageSize}_${sig}${getImgExt()}`)
       // 页码、总数、翻页指令图里的标题和 footer 都印着了，不再用文字重复一遍。
       // 只有链接非得走文字 —— 图上的 URL 点不了
-      const web = webLine()
+      const web = webLine(e)
       const parts = [segment.image(`file://${loc}`)]
       if (web) parts.push(web)
       await e.reply(parts)
@@ -140,7 +142,7 @@ export class memeList extends plugin {
       let txt = `📂 表情包分类（共 ${tags.length} 个）\n\n`
       txt += tags.map(t => `${t.tag}(${t.count})`).join('  ')
       txt += '\n\n查看某个分类：#meme分类 鸣潮'
-      const web = webLine()
+      const web = webLine(e)
       if (web) txt += `\n${web}`
       await e.reply(txt)
       return true

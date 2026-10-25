@@ -644,6 +644,24 @@ body::before {
   text-align: left;
 }
 
+/* 生成后直接发回群/私聊。链接里没带目标时整行不出现 */
+.make-send { display: flex; gap: 8px; margin-top: 9px; }
+.send-go {
+  flex: 1;
+  padding: 9px 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--grad-cta);
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.send-go:disabled { opacity: .6; cursor: default; }
+.send-go:active { transform: scale(.98); }
+/* display:flex 会盖掉浏览器默认的 [hidden]{display:none}，这里显式兜一层 */
+.make-send[hidden], .send-go[hidden] { display: none; }
+
 /* 滚动条也配色，桌面端才看得到 */
 .sheet-body::-webkit-scrollbar { width: 6px; }
 .sheet-body::-webkit-scrollbar-thumb {

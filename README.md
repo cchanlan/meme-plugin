@@ -103,7 +103,9 @@ git clone --depth=1 https://github.com/cchanlan/meme-plugin.git ./plugins/meme-p
 
 ## 网页版
 
-机器人会给一个带 token 的链接，页面上能翻全部表情真图、按分类筛、在线做图。
+机器人发的链接打开后能翻全部表情真图、按分类筛、在线做图，做完点保存就能存下来。
+从**群里那条链接**打开的话，生成完还会多出「发到本群」「私发给我」两个按钮，
+不用下载再手动传（目标跟着链接走、带签名，别人直接打开网址是没有这两个按钮的）。
 端口和对外网址在配置里改（`webPort`、`webUrl`），不想要就 `enableWeb: false`。
 
 ## 配置
@@ -117,6 +119,7 @@ git clone --depth=1 https://github.com/cchanlan/meme-plugin.git ./plugins/meme-p
 | `dockerImage` | 南大加速站的官方镜像 | 只有 docker 装法用得到；拉不动就换成 `ghcr.io/memecrafters/meme-generator:0.1.14` |
 | `forceSharp` | `true` | 指令要不要带 `#` |
 | `enableWeb` / `webPort` / `webUrl` | `true` / `3132` / 空 | 网页版开关、端口、对外网址 |
+| `enableWebSend` / `webSendLimit` | `true` / `6` | 网页生成后直接发群/私发、每个群每分钟最多发几张 |
 | `enableFun` / `funCooldown` / `comboCount` | `true` / `20` / `6` | 整活开关、群内冷却秒数、一次做几个 |
 | `nestMaxSteps` / `nestMaxSize` | `3` / `4` | 套娃最多叠几层、单层超过几 MB 就停手 |
 | `crowdCount` | `6` | `#全群摸头` 抽几个群友 |

@@ -4,6 +4,7 @@ import MemeApi from '../../model/memeApi.js'
 import MemeIndex from '../../model/memeIndex.js'
 import { argSchemas, getEnum } from '../../utils/args.js'
 import { qqAvatar } from '../../utils/user.js'
+import { countGifFrames } from '../../utils/gif.js'
 import { logPrefix } from '../../constants/path.js'
 
 /**
@@ -52,7 +53,7 @@ function tooMany (ip) {
 }
 
 /** 边收边算大小，超了立刻停止累积 —— 不能等 Buffer.concat 之后才发现 */
-function readBody (req, maxBytes) {
+export function readBody (req, maxBytes) {
   return new Promise((resolve, reject) => {
     const chunks = []
     let len = 0
@@ -245,6 +246,9 @@ export async function postMake (req, res, urlObj) {
     res.writeHead(200, {
       'Content-Type': result.contentType,
       'Content-Length': result.buffer.length,
+      // 前端据此决定按钮叫「保存 GIF」还是「保存图片」：
+      // 静态模板（比如舔脚）出来的也是 .gif，但只有 1 帧，提示「存成 .gif 再发」只会让人以为生成坏了
+      'X-Meme-Frames': String(countGifFrames(result.buffer)),
       'Cache-Control': 'no-store'
     })
     res.end(result.buffer)

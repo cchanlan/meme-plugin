@@ -6,6 +6,7 @@ import MemeIndex from '../../model/memeIndex.js'
 import Preview from '../../model/preview.js'
 import { pluginResources, logPrefix } from '../../constants/path.js'
 import { postMake } from './make.js'
+import { postSend } from './send.js'
 
 const WEB_DIR = path.join(pluginResources, 'web')
 
@@ -15,6 +16,30 @@ const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8'
+}
+
+/**
+ * css/js 的内容指纹。
+ *
+ * HTML 里的 `/memes/index.js` 是不带版本号的固定 URL，前端改了之后浏览器
+ * 照样吃旧缓存（`max-age` 生效期内根本不回源），用户看到的是旧界面 ——
+ * 「明明加好按钮了，打开却没有」就是这么来的。给引用的 URL 挂上内容指纹，
+ * 前端一改 URL 就变，浏览器只能重新下。
+ */
+let assetCache = { key: '', ver: '' }
+function assetVersion () {
+  const key = ['index.js', 'index.css'].map(name => {
+    try {
+      const st = fs.statSync(path.join(WEB_DIR, name))
+      return `${st.size}:${st.mtimeMs}`
+    } catch {
+      return '0'
+    }
+  }).join('|')
+  if (assetCache.key !== key) {
+    assetCache = { key, ver: crypto.createHash('md5').update(key).digest('hex').slice(0, 10) }
+  }
+  return assetCache.ver
 }
 
 /** 首页 */
@@ -27,8 +52,11 @@ async function getIndexPage (req, res) {
     res.end('<h1>页面模板缺失</h1>')
     return
   }
-  res.writeHead(200, { 'Content-Type': MIME['.html'] })
-  res.end(fs.readFileSync(file, 'utf8'))
+  const html = fs.readFileSync(file, 'utf8')
+    .replace(/(\/memes\/index\.(?:css|js))"/g, `$1?v=${assetVersion()}"`)
+  // HTML 必须回源验证，否则改完前端要等缓存过期才生效（它才是引着带指纹资源的那张纸）
+  res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-cache' })
+  res.end(html)
 }
 
 /** 静态资源（css/js） */
@@ -41,11 +69,23 @@ async function getStatic (req, res, urlObj) {
     res.end('Not Found')
     return
   }
+  const body = fs.readFileSync(file)
+  const etag = `W/"${crypto.createHash('md5').update(body).digest('hex').slice(0, 16)}"`
+  // 带 `?v=` 指纹的 URL 内容永不变（改了前端指纹就变），可以放心长缓存；
+  // 不带指纹的（老 HTML 里的裸 URL）每次都回源验证，靠 ETag 拿 304
+  const versioned = urlObj.searchParams.has('v')
+  const cache = versioned ? 'public, max-age=31536000, immutable' : 'no-cache'
+  if (!versioned && req.headers['if-none-match'] === etag) {
+    res.writeHead(304, { ETag: etag, 'Cache-Control': cache })
+    res.end()
+    return
+  }
   res.writeHead(200, {
     'Content-Type': MIME[path.extname(name)] || 'application/octet-stream',
-    'Cache-Control': 'public, max-age=3600'
+    ETag: etag,
+    'Cache-Control': cache
   })
-  res.end(fs.readFileSync(file))
+  res.end(body)
 }
 
 /**
@@ -166,6 +206,7 @@ export function getRoute (pathname, method) {
   const exact = table[`${method} ${pathname}`]
   if (exact) return exact
   if (method === 'POST' && pathname.startsWith('/memes/make/')) return postMake
+  if (method === 'POST' && pathname === '/memes/send') return postSend
   if (method === 'GET' && pathname.startsWith('/memes/thumb/')) return getThumb
   if (method === 'GET' && pathname.startsWith('/memes/preview/')) return getPreview
   if (method === 'GET' && /^\/memes\/[\w.-]+\.(css|js)$/.test(pathname)) return getStatic
