@@ -9,7 +9,7 @@ import { encodedCommandArgv, cleanPsError, looksBlocked } from '../utils/psShell
 import { pm2Bin, pm2Proc, resetPm2Cache } from '../utils/pm2.js'
 import { venvMemePath, reposRoot } from '../utils/memeDirs.js'
 import {
-  containerInfo, containerLogs, countMountedDirs, daemonState, isOurs, memeDirsEnv,
+  containerInfo, containerLogs, countMountedDirs, daemonState, installDocker, isOurs, memeDirsEnv,
   portFree, recreateContainer, resetDockerCache, imageName
 } from '../utils/docker.js'
 import { syncRepos } from '../utils/repos.js'
@@ -105,8 +105,8 @@ async function menuText ({ bad, raw } = {}) {
   lines.push('两种装法，挑一种发给我：', '')
 
   if (d.missing) {
-    lines.push('🔹 省事的方式：这台机器上没有 docker，用不了')
-    lines.push('   装了 Docker 就能选它（首次要下约 540MB 镜像，不用管系统里的 Python）', '')
+    lines.push('🔹 省事的方式：#meme部署 docker')
+    lines.push('   这台机器上没装 docker，发这条会自动装（要下几百 MB）', '')
   } else if (!d.started) {
     lines.push('🔹 省事的方式：#meme部署 docker')
     lines.push('   docker 装了但没在运行，先启动它再发：')
@@ -192,6 +192,16 @@ export class memeDeploy extends plugin {
         const keys = await MemeApi.getKeys()
         lines.push(`   服务端 ${keys.length} 个表情`)
       } catch {}
+      // 「列表拉得到、一生成就失败」是另一种病：地址指到了预览站或别的服务，
+      // 或者服务版本跟插件对不上。这里先探一次，别等群友发摸头失败了才发现
+      try {
+        const probe = await MemeApi.probeGenerate()
+        lines.push(probe.state === 'ok'
+          ? `✅ 生成接口：可用（${probe.path}）`
+          : '❌ 生成接口：这个地址上没有能用的生成路由（多半填成了预览站或别的服务）')
+      } catch (err) {
+        lines.push(`❌ 生成接口：探测失败（${err.message}）`)
+      }
     }
     lines.push(`${MemeIndex.isEmpty ? '❌' : '✅'} 本地索引：${MemeIndex.memeCount} 个表情 / ${MemeIndex.keywordCount} 个关键词`)
 
@@ -217,7 +227,7 @@ export class memeDeploy extends plugin {
     const deployMode = String(Config.get('deployMode') || '').toLowerCase()
     let container = null
     if (d.missing) {
-      lines.push('⬜ docker：这台机器上没装（想用容器方式就装个 Docker，或走 venv）')
+      lines.push('⬜ docker：这台机器上没装（发 #meme部署 docker 会自动装，或走 venv）')
     } else if (!d.started) {
       lines.push('❌ docker：装了但没启动（Linux: sudo systemctl start docker；Windows / macOS: 开 Docker Desktop）')
     } else {
@@ -412,15 +422,24 @@ export class memeDeploy extends plugin {
       return true
     }
 
-    // docker 环境：CLI 缺失和「装了没启动」要分开报，否则用户会跑去重装 docker
-    const d = daemonState()
+    // docker 环境：没装就先替用户装上，装了没启动再分开报 ——
+    // 这两件事以前都只回一句「去装 / 去启动」，容器里跑云崽的人照做也不一定成
+    let d = daemonState()
     if (d.missing) {
-      await e.reply(
-        '❌ 这台机器上没找到 docker 命令\n' +
-        '👉 想用容器方式：先装 Docker 再发这条\n' +
-        '👉 不想装 Docker：发 #meme部署 venv，用系统 Python 装'
-      )
-      return true
+      const r = await installDocker({
+        onMessage: t => e.reply(t).catch(() => {})
+      })
+      if (!r.ok) {
+        await e.reply(`❌ ${r.message}`)
+        return true
+      }
+      await e.reply(r.message)
+      resetDockerCache()
+      d = daemonState()
+      if (d.missing) {
+        await e.reply('docker 装完还找不到命令，重启一下 Yunzai 再发 #meme部署 docker')
+        return true
+      }
     }
     if (!d.started) {
       await e.reply(

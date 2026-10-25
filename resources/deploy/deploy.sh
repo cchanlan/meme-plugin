@@ -65,13 +65,82 @@ find_bin () {
 NODE_BIN_DIR=""
 command -v node >/dev/null 2>&1 && NODE_BIN_DIR="$(dirname "$(command -v node)")"
 
-command -v git >/dev/null 2>&1 || fail "缺少 git，请先安装：apt install git"
+# 装包要 root。容器里一般本来就是 root；普通用户只要有免密 sudo 也行 ——
+# 要密码的那种就别指望无人值守了，让用户自己跑一条命令比卡在这儿强
+as_root () {
+  if [ "$(id -u)" = 0 ]; then "$@"
+  elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then sudo -n "$@"
+  else return 127
+  fi
+}
+
+# 按系统自带的包管理器装。
+# 现在的常见场景是 TRSS 的容器 / WSL 里跑云崽，这些环境基本没预装 git，
+# 用户发一条 #meme部署 却卡在「请先安装 git」，他并不知道该用什么命令。
+install_pkg () {
+  local pkgs="$*" log=/tmp/meme-deploy-pkg.log
+  if command -v apt-get >/dev/null 2>&1; then
+    as_root apt-get update -qq >"$log" 2>&1
+    as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $pkgs >>"$log" 2>&1
+  elif command -v dnf >/dev/null 2>&1; then
+    as_root dnf install -y -q $pkgs >"$log" 2>&1
+  elif command -v yum >/dev/null 2>&1; then
+    as_root yum install -y -q $pkgs >"$log" 2>&1
+  elif command -v pacman >/dev/null 2>&1; then
+    as_root pacman -Sy --noconfirm --needed $pkgs >"$log" 2>&1
+  elif command -v apk >/dev/null 2>&1; then
+    as_root apk add --no-cache $pkgs >"$log" 2>&1
+  else
+    echo "  没有识别到 apt / dnf / yum / pacman / apk" >&2
+    return 127
+  fi
+}
+
+# 装失败时把最后一行原因带出来：用户至少能看到是网络还是权限
+install_pkg_hint () {
+  local lines
+  lines=$(tail -3 /tmp/meme-deploy-pkg.log 2>/dev/null | tr '\n' ' ')
+  echo "${lines:-(没有输出)}"
+}
+
+if ! command -v git >/dev/null 2>&1; then
+  step "安装 git（拉表情仓库要用）"
+  if install_pkg git && command -v git >/dev/null 2>&1; then
+    ok "git 安装完成"
+  else
+    fail "自动装 git 失败：$(install_pkg_hint)｜请手动装好后重发 #meme部署"
+  fi
+fi
+
 PM2="$(find_bin pm2 \
   "$NODE_BIN_DIR/pm2" \
   /usr/local/bin/pm2 \
   /usr/bin/pm2 \
-  "$HOME/.local/bin/pm2")" \
-  || fail "缺少 pm2，请先安装：npm i -g pm2"
+  "$HOME/.local/bin/pm2")"
+
+# pm2 缺失就装：容器 / WSL 里跑云崽的机器基本都没有它。
+# npm i -g 装完落在 npm 的全局 bin 下，那个目录经常不在 PATH 里，所以装完
+# 按 npm prefix -g 再找一次，并把该目录补进本次的 PATH（pm2 自己起来时也要用它）
+if [ -z "$PM2" ]; then
+  step "安装 pm2（进程守护用）"
+  NPM="$(find_bin npm "$NODE_BIN_DIR/npm" /usr/local/bin/npm /usr/bin/npm)"
+  [ -n "$NPM" ] || fail "缺少 pm2，自动安装还需要 npm：请先装 Node.js，再重发 #meme部署"
+  if ! "$NPM" i -g pm2 >/tmp/meme-deploy-pm2.log 2>&1; then
+    # 国内网络拉官方源常超时，换镜像再试一次
+    "$NPM" i -g pm2 --registry=https://registry.npmmirror.com >>/tmp/meme-deploy-pm2.log 2>&1
+  fi
+  PREFIX="$("$NPM" prefix -g 2>/dev/null)"
+  [ -n "$PREFIX" ] && [ -d "$PREFIX/bin" ] && PATH="$PREFIX/bin:$PATH"
+  export PATH
+  PM2="$(find_bin pm2 \
+    "$PREFIX/bin/pm2" \
+    "$NODE_BIN_DIR/pm2" \
+    /usr/local/bin/pm2 \
+    /usr/bin/pm2 \
+    "$HOME/.local/bin/pm2")"
+  [ -n "$PM2" ] || fail "自动装 pm2 失败：$(tail -2 /tmp/meme-deploy-pm2.log 2>/dev/null | tr '\n' ' ')"
+  ok "pm2 安装完成"
+fi
 
 PY=""
 for c in python3 python; do
@@ -81,7 +150,25 @@ for c in python3 python; do
     if [ "$major" = "3" ] && [ "$minor" -ge 9 ] 2>/dev/null; then PY="$c"; break; fi
   fi
 done
-[ -n "$PY" ] || fail "需要 Python 3.9+，当前没找到合适的版本"
+
+# python 一个都没有（容器镜像里很常见）就装上。Debian / Ubuntu 还要带
+# python3-venv，否则下面 python3 -m venv 会报 ensurepip is not available
+if [ -z "$PY" ]; then
+  step "安装 Python 3（画图服务要用）"
+  if install_pkg "python3 python3-venv" || install_pkg python3; then
+    for c in python3 python; do
+      if command -v "$c" >/dev/null 2>&1; then
+        ver=$("$c" -c 'import sys;print(f"{sys.version_info[0]}.{sys.version_info[1]}")' 2>/dev/null)
+        major=${ver%%.*}; minor=${ver##*.}
+        if [ "$major" = "3" ] && [ "$minor" -ge 9 ] 2>/dev/null; then PY="$c"; break; fi
+      fi
+    done
+  fi
+  if [ -z "$PY" ]; then
+    fail "自动装 Python 失败：$(install_pkg_hint)｜需要 3.9 以上，装好后重发 #meme部署"
+  fi
+  ok "Python 安装完成（$($PY --version 2>&1)）"
+fi
 ok "环境就绪（$($PY --version 2>&1)，git，pm2）"
 
 # ── 2. 建 venv ────────────────────────────────────────

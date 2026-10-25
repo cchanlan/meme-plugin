@@ -233,9 +233,158 @@ export function daemonState () {
   }
 }
 
+// ── 自动安装 ────────────────────────────────────────────
+
+function runCmd (cmd, args, timeout = 900000) {
+  const r = spawnSync(cmd, args, {
+    encoding: 'utf-8',
+    timeout,
+    windowsHide: true,
+    maxBuffer: 8 * 1024 * 1024
+  })
+  return {
+    ok: !r.error && r.status === 0,
+    out: String(r.stdout || '').trim(),
+    err: String(r.stderr || '').trim() || (r.error ? r.error.message : '')
+  }
+}
+
+function hasCmd (name) {
+  // 用 shell 的 command -v 而不是 which：精简容器镜像里经常没装 which
+  if (IS_WIN) return runCmd('where', [name], 20000).ok
+  return runCmd('sh', ['-c', `command -v ${name}`], 20000).ok
+}
+
+/**
+ * 是不是跑在容器里。
+ *
+ * 容器里装 docker 没有意义：没有 systemd、没有权限起 dockerd，装完还是用不了。
+ * TRSS 的容器部署正是这种环境，得直接告诉他换一种装法，别白等十几分钟。
+ */
+function inContainer () {
+  if (IS_WIN) return false
+  try {
+    if (fs.existsSync('/.dockerenv')) return true
+    return /docker|containerd|lxc|kubepods/.test(fs.readFileSync('/proc/1/cgroup', 'utf-8'))
+  } catch {
+    return false
+  }
+}
+
+/** 装包要 root：本来就是 root 就直接跑，普通用户要有免密 sudo */
+function rootRunner () {
+  if (!IS_WIN && typeof process.getuid === 'function' && process.getuid() === 0) {
+    return (cmd, args, timeout) => runCmd(cmd, args, timeout)
+  }
+  if (!IS_WIN && hasCmd('sudo') && runCmd('sudo', ['-n', 'true'], 20000).ok) {
+    return (cmd, args, timeout) => runCmd('sudo', ['-n', cmd, ...args], timeout)
+  }
+  return null
+}
+
+/**
+ * 没装 docker 时替用户装上。
+ *
+ * 以前这里只回一句「先装 Docker 再发这条」—— 对容器 / WSL 里跑云崽的人来说
+ * 等于把活原样推回去：他既不知道该用 apt 还是 pacman，也不知道装完还要启动。
+ * 现在按系统自己装，装不上再把确切的一句命令给出来。
+ *
+ * 只处理「CLI 不存在」；「装了没启动」是启动服务，不该混在一起。
+ *
+ * @returns {Promise<{ok: boolean, message: string}>}
+ */
+export async function installDocker ({ onMessage = () => {} } = {}) {
+  const say = t => {
+    try { onMessage(t) } catch {}
+  }
+
+  if (inContainer()) {
+    return {
+      ok: false,
+      message: '这个进程跑在容器里，容器内装 docker 用不了（起不了守护进程）。\n' +
+        '👉 改用发 #meme部署 venv 在本机装一套\n' +
+        '👉 或者把 memeApiUrl 指向宿主机 / 外部现成的服务'
+    }
+  }
+
+  if (IS_WIN) {
+    if (!hasCmd('winget')) {
+      return {
+        ok: false,
+        message: '没有找到 winget，没法自动装 docker。\n' +
+          '请手动装 Docker Desktop：https://www.docker.com/products/docker-desktop/\n' +
+          '或者直接发 #meme部署 venv 用系统 Python 装'
+      }
+    }
+    say('🐳 正在用 winget 安装 Docker Desktop（要下载几百 MB，装完可能要求重启）...')
+    const r = runCmd('winget', [
+      'install', '--id', 'Docker.DockerDesktop', '-e',
+      '--accept-package-agreements', '--accept-source-agreements'
+    ], 1800000)
+    resetDockerCache()
+    if (!r.ok && !dockerBin()) {
+      return { ok: false, message: `winget 安装失败：${(r.err || r.out).split('\n').slice(-2).join(' ')}` }
+    }
+    return {
+      ok: true,
+      message: 'Docker Desktop 装好了，但还要先打开它（开始菜单里启动），等它跑起来再发一次 #meme部署 docker'
+    }
+  }
+
+  let mgr = ''
+  for (const m of ['apt-get', 'dnf', 'yum', 'pacman', 'apk']) {
+    if (hasCmd(m)) { mgr = m; break }
+  }
+  if (!mgr && hasCmd('brew')) mgr = 'brew'
+  if (!mgr) {
+    return {
+      ok: false,
+      message: '这台机器上没找到能用的包管理器（apt/dnf/yum/pacman/apk/brew）。\n' +
+        '请手动装 Docker：https://docs.docker.com/get-docker/'
+    }
+  }
+
+  const asRoot = mgr === 'brew' ? null : rootRunner()
+  if (mgr !== 'brew' && !asRoot) {
+    return {
+      ok: false,
+      message: '装 docker 需要 root（守护进程要写系统目录），当前账号既不是 root 也没有免密 sudo。\n' +
+        `请用 root 跑一遍：${mgr} install docker，然后发 #meme部署 docker`
+    }
+  }
+  const exec = (cmd, args, timeout) => (asRoot ? asRoot(cmd, args, timeout) : runCmd(cmd, args, timeout))
+
+  say('🐳 正在安装 docker（首次要下几百 MB，几分钟）...')
+  let r
+  if (mgr === 'apt-get') {
+    exec('apt-get', ['update', '-qq'], 300000)
+    r = exec('env', ['DEBIAN_FRONTEND=noninteractive', 'apt-get', 'install', '-y', '-qq', 'docker.io'])
+  } else if (mgr === 'pacman') {
+    r = exec('pacman', ['-Sy', '--noconfirm', '--needed', 'docker'])
+  } else if (mgr === 'apk') {
+    r = exec('apk', ['add', '--no-cache', 'docker'])
+  } else if (mgr === 'brew') {
+    r = runCmd('brew', ['install', '--cask', 'docker'], 1800000)
+  } else {
+    r = exec(mgr, ['install', '-y', '-q', 'docker'])
+  }
+  if (!r.ok && !dockerBin()) {
+    return { ok: false, message: `自动装 docker 失败：${(r.err || r.out).split('\n').slice(-2).join(' ')}` }
+  }
+
+  // 装完还得让它跑起来。有 systemd 的机器直接开，容器 / WSL1 里没有 systemd，
+  // 这一步会失败，那就老实在提示里说清楚
+  if (hasCmd('systemctl')) exec('systemctl', ['enable', '--now', 'docker'], 120000)
+  resetDockerCache()
+  if (daemonState().started) return { ok: true, message: 'docker 已安装并启动' }
+  return {
+    ok: true,
+    message: 'docker 装好了，但守护进程还没起来：先跑 sudo systemctl start docker（没有 systemd 的环境需要手动起 dockerd）'
+  }
+}
+
 /** 镜像在不在本地（在的话就不用再拉） */
-export function imageExists (image) {
-  if (!image) return false
+export function imageExists (image) {  if (!image) return false
   const r = docker(['image', 'inspect', image, '--format', '{{.Id}}'], { timeout: 20000 })
   return r.ok && !!r.out
 }

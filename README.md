@@ -47,7 +47,7 @@ git clone --depth=1 https://github.com/cchanlan/meme-plugin.git ./plugins/meme-p
 | 你的情况 | 怎么做 |
 | --- | --- |
 | 别人给了你地址 | 填进配置 `memeApiUrl`，完事。表情仓库、`#meme部署`、`reposDir` 全都不用管 |
-| 机器上还没有 | 发 `#meme部署`（主人限定），它会先问你用哪种装法：<br>**docker** —— 拉官方镜像跑容器，机器上有 docker 就行，不用管 Python，镜像约 1.5G<br>**venv** —— 在本机建 Python 环境，需要 Python 3.9+、git、pm2，约占 2G<br>两种都要等几分钟，反复发不会重复装 |
+| 机器上还没有 | 发 `#meme部署`（主人限定），它会先问你用哪种装法：<br>**docker** —— 拉官方镜像跑容器，不用管 Python，镜像约 1.5G<br>**venv** —— 在本机建 Python 环境，约占 2G<br>缺 pm2、git、Python、docker 都会自动装（需要 root 或免密 sudo），装不上才提示<br>两种都要等几分钟，反复发不会重复装 |
 | 早就装过 | `memeApiUrl` 指向它，**并且一定要填 `reposDir`**（表情仓库目录，常见 `/opt/meme`） |
 
 > ⚠️ 第三种情况不填 `reposDir` 的话，`#meme更新` 会另外下一份，你更新的是新下的、画图服务读的是老的——
@@ -131,6 +131,8 @@ git clone --depth=1 https://github.com/cchanlan/meme-plugin.git ./plugins/meme-p
 ## 出问题先看这几条
 
 - **一直「服务连不上」** —— `memeApiUrl` 填错，或画图服务没起来（venv 装的看 `pm2 ls`，docker 装的看 `docker ps`）
+- **一生成就失败、提示「不接受生成请求」** —— 地址那头不是配套的 meme-generator（常见是填成了本插件的网页预览站，或别的机器人服务）。发 `#meme部署状态`，里面那行「生成接口」会直接告诉你探测结果
+- **容器 / WSL 里部署** —— 容器内装不了 docker，请用 `#meme部署 venv`；或者把 `memeApiUrl` 指到宿主机 / 外部现成的服务
 - **docker 装完表情很少** —— 宿主的表情目录没共享给 Docker：Windows / macOS 的 Docker Desktop 到设置里把该磁盘加进去，再发一次 `#meme部署 docker`
 - **镜像拉不动** —— 把配置 `dockerImage` 换成官方的 `ghcr.io/memecrafters/meme-generator:0.1.14`，再发一次命令（拉过的层不会重下）
 - **更新了但表情没变多** —— 十成是 `reposDir` 没填，见上面的警告

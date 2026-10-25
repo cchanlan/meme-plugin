@@ -65,6 +65,14 @@ function apiError (status, text) {
     const field = detail.split('\n').map(s => s.trim()).find(s => /^\w+$/.test(s))
     return `参数不对，发「表情名详情」看这个表情支持哪些参数`
   }
+  // 405 是「路径在、方法不对」。调用方已经把几种常见路径都试过一遍还全灭，
+  // 说明这个地址上的服务压根不是能生成的那种 —— 把英文原句甩到群里，
+  // 用户既看不出是自己地址填错，也不知道下一步该干什么
+  if (status === 405) {
+    return '这个地址上的服务不接受生成请求 😵\n' +
+      '可能填成了预览站、别的机器人服务，或者服务版本跟插件对不上。\n' +
+      '请主人发 #meme部署状态 看一眼'
+  }
   // 兜底：去掉 Python 对象地址这类噪音，再截断 —— 群消息不该甩一屏 traceback
   const clean = detail.replace(/<[\w.]+ object at 0x[0-9a-f]+>/gi, '（内部对象）').replace(/\s*\n\s*/g, ' ')
   return clean.length > 160 ? `${clean.slice(0, 160)}…` : clean
@@ -105,6 +113,59 @@ async function request (path, { read = 'none', ...options } = {}) {
     throw netError(err)
   } finally {
     clearTimeout(timer)
+  }
+}
+
+/**
+ * 生成接口挂在哪。
+ *
+ * 上游 0.1.x 注册的是 `POST /memes/{key}/`（带尾斜杠），插件一直照这个发。
+ * 但同一套接口在不同分支和版本上写法并不统一：有的去掉了尾斜杠，有的把参数名
+ * 换成 meme_key。发错路径时 FastAPI 回的是 405 `Method Not Allowed`，
+ * 群里就只剩一句英文 —— 用户分不清是自己地址填错、服务没起对，还是插件坏了。
+ *
+ * 所以按「上次走通的 → 默认带斜杠 → 不带斜杠 → openapi.json 里查真实 POST 路由」
+ * 依次降级。只有 405 才换下一条，404/422 说明路径本身是对的、错在别处。
+ * 走通一次就按 base url 记住模板，后面不再试错。
+ */
+const DEFAULT_GEN_PATHS = ['/memes/{key}/', '/memes/{key}']
+let genCache = { base: '', tpl: '' }
+
+const fillKey = (tpl, key) => tpl.replace(/\{[^}]+\}/, encodeURIComponent(key))
+
+/** 生成路径的候选模板，缓存命中的排最前 */
+function genTemplates (base) {
+  const list = []
+  const push = tpl => { if (tpl && !list.includes(tpl)) list.push(tpl) }
+  if (genCache.base === base) push(genCache.tpl)
+  DEFAULT_GEN_PATHS.forEach(push)
+  return list
+}
+
+/**
+ * 从 openapi.json 里挑生成接口。
+ *
+ * 判据是「POST + 路径里带 {参数} + 挂在 /memes/ 下」：`/memes/render_list`
+ * 虽然也是 POST，但它是整页渲染、没有路径参数，不能当成生成接口。
+ * 路径短的排前面 —— 越接近 `/memes/{key}` 越像原生生成。
+ */
+function pickGenFromDoc (doc) {
+  const paths = doc?.paths
+  if (!paths || typeof paths !== 'object') return []
+  return Object.entries(paths)
+    .filter(([p, item]) => item?.post && /^\/memes\/\{[^}]+\}(\/|$)/.test(p))
+    .map(([p]) => p)
+    .sort((a, b) => a.length - b.length)
+}
+
+/** 服务端自己声明的生成路径；拿不到就是空数组（不少部署关掉了 docs） */
+async function genTemplatesFromDoc () {
+  try {
+    const { res, data } = await request('/openapi.json', { read: 'json' })
+    if (!res.ok) return []
+    return pickGenFromDoc(data)
+  } catch {
+    return []
   }
 }
 
@@ -226,24 +287,84 @@ const MemeApi = {
 
   /**
    * 生成表情
+   *
+   * formData 会被原样交给多次 fetch —— undici 每次都会重新序列化，
+   * 所以 405 降级重试时同一份 body 可以直接复用，长度不变。
+   *
    * @returns {Promise<{ok: boolean, buffer?: Buffer, contentType?: string, error?: string}>}
    */
   async generate (key, formData) {
-    const { res, data, errText } = await request(`/memes/${encodeURIComponent(key)}/`, {
-      method: 'POST',
-      body: formData,
-      read: 'buffer'
-    })
-    if (!res.ok) {
-      // 原文只进日志：排查时要看得到 pydantic 说了什么，但别发到群里
-      logger.debug(`${logPrefix} 生成 ${key} 被服务端拒绝 HTTP ${res.status}: ${errText.slice(0, 500)}`)
-      return { ok: false, error: apiError(res.status, errText) }
-    }
-    return {
+    const base = Config.getApiUrl()
+    let last = null
+
+    const send = async path => request(path, { method: 'POST', body: formData, read: 'buffer' })
+
+    const collect = res => ({
       ok: true,
-      buffer: data,
-      contentType: res.headers.get('Content-Type') || 'image/gif'
+      buffer: res.data,
+      contentType: res.res.headers.get('Content-Type') || 'image/gif'
+    })
+
+    // 先按已知的写法试，走通就把模板记下来
+    for (const tpl of genTemplates(base)) {
+      const res = await send(fillKey(tpl, key))
+      if (res.res.ok) {
+        genCache = { base, tpl }
+        return collect(res)
+      }
+      // 只有「路径在、方法不对」才值得换一条：404/422/541 都说明路径本身没错
+      if (res.res.status !== 405) return this.failed(key, res)
+      last = res
     }
+
+    // 全是 405：问一次服务端自己，它把生成接口挂在哪里
+    for (const tpl of await genTemplatesFromDoc()) {
+      const res = await send(fillKey(tpl, key))
+      if (res.res.ok) {
+        genCache = { base, tpl }
+        return collect(res)
+      }
+      if (res.res.status !== 405) return this.failed(key, res)
+      last = res
+    }
+
+    return this.failed(key, last)
+  },
+
+  /** 生成失败统一收口：原文只进日志，群里只发能看懂的那句 */
+  failed (key, res) {
+    logger.debug(`${logPrefix} 生成 ${key} 被服务端拒绝 HTTP ${res.res.status}: ${String(res.errText || '').slice(0, 500)}`)
+    return { ok: false, error: apiError(res.res.status, res.errText) }
+  },
+
+  /**
+   * 探一下「这个地址到底能不能生成」。
+   *
+   * 用 GET 打生成路径就够了：FastAPI 对「路径存在但只收 POST」回 405，
+   * 对「路径根本不存在」回 404 —— 不用真塞图片去生成，也不占服务端 CPU。
+   * 部署状态里挂这一行，才能在「列表能拉、一生成就挂」的时候提前发现问题。
+   *
+   * @returns {Promise<{state: 'ok'|'missing', path?: string}>}
+   */
+  async probeGenerate (key = 'petpet') {
+    const base = Config.getApiUrl()
+    const paths = []
+    const push = tpl => {
+      const p = fillKey(tpl, key)
+      if (!paths.includes(p)) paths.push(p)
+    }
+    genTemplates(base).forEach(push)
+    const fromDoc = await genTemplatesFromDoc()
+    fromDoc.forEach(push)
+
+    for (const path of paths) {
+      const { res } = await request(path)
+      // 405 = 这条路径确实注册了 POST（生成接口本身）；2xx/4xx 说明路径也在，
+      // 只有 404 才是「这个地址上没有它」，接着试下一条
+      if (res.status === 405) return { state: 'ok', path }
+      if (res.status !== 404) return { state: 'ok', path }
+    }
+    return { state: 'missing' }
   }
 }
 

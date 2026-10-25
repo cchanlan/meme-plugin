@@ -155,7 +155,30 @@ $Pm2 = Find-Exe 'pm2' @(
   "$env:ALLUSERSPROFILE\npm\pm2.cmd"
 )
 if (-not $Pm2) {
-  Fail "缺少 pm2，请先安装：npm i -g pm2`n（$PathHint）"
+  # 以前这里是直接 Fail。但 pm2 只是守护进程，装它不需要管理员权限，
+  # 用户在自己的机器上装个全局 npm 包本来就不该被拦下来
+  Step '安装 pm2（进程守护用）'
+  $Npm = Find-Exe 'npm' @(
+    "$env:ProgramFiles\nodejs\npm.cmd",
+    "$env:APPDATA\npm\npm.cmd"
+  )
+  if (-not $Npm) {
+    Fail "缺少 pm2，自动安装还需要 npm：请先装 Node.js（自带 npm）再重发 #meme部署`n（$PathHint）"
+  }
+  & $Npm i -g pm2 2>&1 | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    # 国内网络连官方源经常超时，换镜像再试一次
+    & $Npm i -g pm2 --registry=https://registry.npmmirror.com 2>&1 | Out-Null
+  }
+  $Pm2 = Find-Exe 'pm2' @(
+    "$env:APPDATA\npm\pm2.cmd",
+    "$env:ProgramFiles\nodejs\pm2.cmd",
+    "$env:ALLUSERSPROFILE\npm\pm2.cmd"
+  )
+  if (-not $Pm2) {
+    Fail "自动装 pm2 失败：请在命令行跑一遍 npm i -g pm2，成功后再发 #meme部署"
+  }
+  Ok 'pm2 安装完成'
 }
 
 $Py = Find-Python
