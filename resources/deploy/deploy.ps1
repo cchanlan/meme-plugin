@@ -136,6 +136,13 @@ $Repos = @(
   @{ dir = 'tudou-meme'; url = 'https://github.com/LRZ9712/tudou-meme'; branch = 'main'; sub = 'meme' }
 )
 
+# 直连 GitHub 失败时依次试的公共前缀镜像（与 deploy.sh / utils/repos.js 保持一致）。
+# 真实报障就是 Windows + ArchWSL 这种环境：git clone github.com 全部 Connection was reset，
+# 用户只剩 295 个内置表情。两个地址 2026-10-26 用 git ls-remote 实测可用。
+$GhMirrors = @('https://ghfast.top/', 'https://ghproxy.net/')
+# 本次部署里已经试通的那个，后面的仓库直接跟着用
+$GhMirror = ''
+
 # ── 1. 环境自检 ────────────────────────────────────────
 Step '检查运行环境'
 
@@ -231,14 +238,43 @@ foreach ($repo in $Repos) {
     & $Git -C $target pull --quiet 2>&1 | Out-Null
     Write-Output "  ✓ $($repo.dir) 已更新"
   } else {
-    # 把真实报错带出来，别只说「克隆失败」——分不清是网络、分支名还是代理前缀的问题
-    $err = & $Git clone --depth 1 -b $repo.branch $fullUrl $target 2>&1
-    if ($LASTEXITCODE -ne 0) {
+    # 失败重试前先把残留清掉：clone 断在中途会在目标目录留下半个仓库，
+    # 下一次再 clone 就是「already exists and is not an empty directory」，永远好不了
+    if (Test-Path $target) { Remove-Item -Recurse -Force $target -ErrorAction SilentlyContinue }
+
+    $urls = @($fullUrl)
+    # 用户配了 GitProxy 就只走他的；没配才拿公共镜像兜底
+    if (-not $GitProxy) {
+      if ($GhMirror) { $urls = @("$GhMirror$($repo.url)") + $urls }
+      foreach ($m in $GhMirrors) {
+        $c = "$m$($repo.url)"
+        if ($urls -notcontains $c) { $urls += $c }
+      }
+    }
+
+    $cloned = $false
+    $err = @()
+    foreach ($u in $urls) {
+      # 把真实报错带出来，别只说「克隆失败」——分不清是网络、分支名还是代理前缀的问题
+      $err = & $Git clone --depth 1 -b $repo.branch $u $target 2>&1
+      if ($LASTEXITCODE -eq 0) {
+        $cloned = $true
+        if ($u -ne $repo.url) {
+          $GhMirror = $u.Substring(0, $u.Length - $repo.url.Length)
+          Write-Output "  ✓ $($repo.dir) 克隆完成（GitHub 直连不通，走了镜像 $GhMirror）"
+        } else {
+          Write-Output "  ✓ $($repo.dir) 克隆完成"
+        }
+        break
+      }
+      if (Test-Path $target) { Remove-Item -Recurse -Force $target -ErrorAction SilentlyContinue }
+    }
+
+    if (-not $cloned) {
       $last = ($err | Where-Object { $_ -notmatch '^Cloning' } | Select-Object -Last 1)
       Write-Output "  ⚠️ $($repo.dir) 克隆失败：$last"
       continue
     }
-    Write-Output "  ✓ $($repo.dir) 克隆完成"
   }
   $subPath = Join-Path $target $repo.sub
   if (Test-Path $subPath) { $MemeDirs += $subPath }

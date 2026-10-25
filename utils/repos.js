@@ -23,6 +23,57 @@ export function resolveRepoPath (repo) {
 }
 
 /**
+ * 直连 GitHub 失败时依次试的公共前缀镜像。
+ *
+ * 真实报障：ArchWSL 里的 TRSS 那台机器，`git clone github.com` 五个仓库全部
+ * `Connection was reset` / `port 443 after 21077 ms`，一个都没拉到，用户只拿到
+ * 295 个内置表情，还以为插件装坏了。锅巴里是有 `gitProxy` 配置项，但默认空着，
+ * 用户根本不知道该往里填什么。
+ *
+ * 下面两个是 2026-10-26 在服务器上 `git ls-remote` 实测能用的；
+ * gh-proxy.com 无响应、ghproxy.cc 证书报错，已剔除。公共镜像会挂，
+ * 所以只当兜底 —— 用户自己配了 gitProxy 就完全按配置走，不拿镜像插手。
+ */
+const FALLBACK_MIRRORS = ['https://ghfast.top/', 'https://ghproxy.net/']
+
+/**
+ * 克隆一个表情仓库，直连不通就换镜像。
+ *
+ * 每次重试前都把目标目录删干净：git clone 断在中途会留下半个仓库，
+ * 下一次再 clone 就是「already exists and is not an empty directory」，
+ * 从此这个仓库在这台机器上永远拉不下来 —— 比网络不通更难查。
+ *
+ * @param {any} repo
+ * @param {string} repoPath
+ * @param {string} preferredMirror 本次同步里已经试通的前缀，加快后续仓库
+ * @returns {Promise<{ok: true, viaMirror: string} | {ok: false, error: string}>}
+ */
+async function cloneRepo (repo, repoPath, preferredMirror) {
+  const custom = String(Config.get('gitProxy') || '').trim()
+  const urls = []
+  const push = u => { if (u && !urls.includes(u)) urls.push(u) }
+
+  if (preferredMirror) push(preferredMirror + repo.url)
+  push(Config.proxyUrl(repo.url))
+  // 用户配了代理就只认他的，公共镜像只在「什么都没配」时兜底
+  if (!custom) FALLBACK_MIRRORS.forEach(m => push(m + repo.url))
+
+  let error = '克隆失败'
+  for (const url of urls) {
+    const c = await git(
+      ['clone', '--depth', '1', '-b', String(repo.branch || 'main'), url, repoPath],
+      { timeout: 600000 }
+    )
+    if (c.ok) {
+      return { ok: true, viaMirror: url === repo.url ? '' : url.slice(0, url.length - repo.url.length) }
+    }
+    error = c.fatal || c.err || c.out || '克隆失败'
+    fs.rmSync(repoPath, { recursive: true, force: true })
+  }
+  return { ok: false, error }
+}
+
+/**
  * @param {{onMessage?: (text: string) => void}} opts
  * @returns {Promise<{total:number, cloned:number, updated:number, noChange:string[], failed:{name:string,error:string}[], hasUpdates:boolean}>}
  */
@@ -32,6 +83,9 @@ export async function syncRepos ({ onMessage } = {}) {
   const result = { total: repos.length, cloned: 0, updated: 0, noChange: [], failed: [], hasUpdates: false }
   if (repos.length === 0) return result
 
+  // 本次同步里探到的可用镜像：第一个仓库试通了，后面几个直接跟着用
+  let mirror = ''
+
   mkdirs(reposRoot())
 
   for (const repo of repos) {
@@ -39,15 +93,12 @@ export async function syncRepos ({ onMessage } = {}) {
     try {
       // 仓库不存在就克隆
       if (!fs.existsSync(path.join(repoPath, '.git'))) {
-        const url = Config.proxyUrl(repo.url)
-        const c = await git(
-          ['clone', '--depth', '1', '-b', String(repo.branch || 'main'), url, repoPath],
-          { timeout: 600000 }
-        )
-        if (!c.ok) throw new Error(c.fatal || c.err || c.out || '克隆失败')
+        const r = await cloneRepo(repo, repoPath, mirror)
+        if (!r.ok) throw new Error(r.error)
+        if (r.viaMirror) mirror = r.viaMirror
         result.cloned++
         result.hasUpdates = true
-        msg(`📥 ${repo.name} 首次克隆完成`)
+        msg(`📥 ${repo.name} 首次克隆完成${r.viaMirror ? `（GitHub 直连不通，走了镜像 ${r.viaMirror}）` : ''}`)
         continue
       }
 
@@ -79,7 +130,9 @@ export async function syncRepos ({ onMessage } = {}) {
       result.failed.push({ name: repo.name, error: err.message })
       let errMsg = `❌ ${repo.name} 失败：`
       if (err.message.includes('not a git repository')) errMsg += '目录不是 git 仓库'
-      else if (/Could not resolve host|Failed to connect/i.test(err.message)) errMsg += '网络不通，检查代理配置'
+      else if (/Could not resolve host|Failed to connect|Connection was reset|timed out|Couldn't connect/i.test(err.message)) {
+        errMsg += '网络不通，直连和默认镜像都没成功 —— 去锅巴填「GitHub 代理前缀」（如 https://ghfast.top/）再发 #meme更新'
+      }
       else if (err.message.includes('Authentication failed')) errMsg += '认证失败'
       else errMsg += err.message.split('\n')[0].slice(0, 60)
       msg(errMsg)

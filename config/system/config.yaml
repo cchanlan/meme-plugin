@@ -252,7 +252,9 @@ repos:
     branch: main
     memeSubDir: meme
 # GitHub 代理前缀，留空为直连（推荐，本机通常已配 git 代理）。
-# 公共前缀镜像经常失效，git 报 403/522 就是它挂了，清空改直连即可
+# 直连不通（git 报 Connection was reset / port 443 超时）时可填前缀型镜像，
+# 2026-10-26 实测可用：https://ghfast.top/ 或 https://ghproxy.net/
+# 公共镜像会挂，git 报 403/522 就是它挂了，清空改回直连即可
 gitProxy: ""
 
 # ===== 可选部署 =====

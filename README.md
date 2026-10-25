@@ -134,6 +134,7 @@ git clone --depth=1 https://github.com/cchanlan/meme-plugin.git ./plugins/meme-p
 - **一生成就失败、提示「不接受生成请求」** —— 地址那头不是配套的 meme-generator（常见是填成了本插件的网页预览站，或别的机器人服务）。发 `#meme部署状态`，里面那行「生成接口」会直接告诉你探测结果
 - **容器 / WSL 里部署** —— 容器内装不了 docker，请用 `#meme部署 venv`；或者把 `memeApiUrl` 指到宿主机 / 外部现成的服务
 - **docker 装完表情很少** —— 宿主的表情目录没共享给 Docker：Windows / macOS 的 Docker Desktop 到设置里把该磁盘加进去，再发一次 `#meme部署 docker`
+- **表情仓库全拉不下来** —— GitHub 直连不通（`Connection was reset` / `port 443` 超时）。插件会自动改用 `ghfast.top`、`ghproxy.net` 两个镜像重试；镜像也不行的话，去锅巴把「GitHub 代理前缀」填成你自己的代理前缀，再发 `#meme更新`
 - **镜像拉不动** —— 把配置 `dockerImage` 换成官方的 `ghcr.io/memecrafters/meme-generator:0.1.14`，再发一次命令（拉过的层不会重下）
 - **更新了但表情没变多** —— 十成是 `reposDir` 没填，见上面的警告
 - **网页打不开** —— `webUrl` 没填对外地址，或端口没放行

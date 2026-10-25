@@ -45,6 +45,15 @@ step () { echo "::STEP::$1"; }
 ok ()   { echo "::OK::$1"; }
 fail () { echo "::FAIL::$1"; exit 1; }
 
+# 直连 GitHub 失败时依次试的公共前缀镜像（与 Node 侧 utils/repos.js 那份保持一致）。
+# 真实报障：ArchWSL 里的 TRSS，五个仓库全部 `Connection was reset` / `port 443 after
+# 21077 ms`，一个都没拉到，用户只剩 295 个内置表情。锅巴里有 gitProxy 配置项，
+# 但默认空着，用户不知道该填什么。下面两个 2026-10-26 用 git ls-remote 实测可用；
+# gh-proxy.com 无响应、ghproxy.cc 证书报错已剔除。
+GH_MIRRORS=("https://ghfast.top/" "https://ghproxy.net/")
+# 本次部署里已经试通的那个，后面的仓库直接跟着用，不用再一条条撞
+GH_MIRROR=""
+
 # ── 1. 环境自检 ────────────────────────────────────────
 step "检查运行环境"
 
@@ -214,9 +223,34 @@ for item in "${REPOS[@]}"; do
     (cd "$target" && git pull --quiet 2>&1 | tail -2) || echo "  ⚠️ $dir pull 失败，用现有内容"
     echo "  ✓ $dir 已更新"
   else
-    if err=$(git clone --depth 1 -b "$branch" "$full_url" "$target" 2>&1); then
-      echo "  ✓ $dir 克隆完成"
-    else
+    # 失败重试前先把残留清掉：clone 断在中途会在目标目录留下半个仓库，
+    # 下一次再 clone 就是「already exists and is not an empty directory」，永远好不了
+    rm -rf "$target"
+    urls=("$full_url")
+    # 用户配了 GIT_PROXY 就只走他的；没配才拿公共镜像兜底
+    if [ -z "$GIT_PROXY" ]; then
+      [ -n "$GH_MIRROR" ] && urls=("$GH_MIRROR$url" "${urls[@]}")
+      for m in "${GH_MIRRORS[@]}"; do
+        [[ "${urls[*]}" == *"$m$url"* ]] || urls+=("$m$url")
+      done
+    fi
+
+    cloned=0
+    for u in "${urls[@]}"; do
+      if err=$(git clone --depth 1 -b "$branch" "$u" "$target" 2>&1); then
+        cloned=1
+        if [ "$u" != "$url" ]; then
+          GH_MIRROR="${u%"$url"}"
+          echo "  ✓ $dir 克隆完成（GitHub 直连不通，走了镜像 $GH_MIRROR）"
+        else
+          echo "  ✓ $dir 克隆完成"
+        fi
+        break
+      fi
+      rm -rf "$target"
+    done
+
+    if [ "$cloned" = "0" ]; then
       # 把真实报错带出来：之前是 >/dev/null 2>&1 全吞掉，
       # 用户只看到「克隆失败」，分不清是网络不通、分支名写错还是代理前缀挂了
       echo "  ⚠️ $dir 克隆失败：$(printf '%s' "$err" | grep -v '^Cloning' | tail -1 | cut -c1-140)"
