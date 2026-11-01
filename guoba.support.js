@@ -21,10 +21,12 @@ export function supportGuoba () {
       iconColor: '#4c8dff'
     },
     configInfo: {
+      // 使用锅巴原生页签，共用表单模型，手机端沿用横滑页签和竖排表单。
+      // 这里只在 Linux / JiuLi 上实测，Yunzai 生态沿用同一 schema 协议。
       schemas: [
         {
-          component: 'Divider',
-          label: 'meme 服务'
+          component: 'SOFT_GROUP_BEGIN',
+          label: '服务接入'
         },
         {
           field: 'memeApiUrl',
@@ -53,8 +55,8 @@ export function supportGuoba () {
           }
         },
         {
-          component: 'Divider',
-          label: '触发方式'
+          component: 'SOFT_GROUP_BEGIN',
+          label: '触发设置'
         },
         {
           field: 'forceSharp',
@@ -99,8 +101,8 @@ export function supportGuoba () {
           }
         },
         {
-          component: 'Divider',
-          label: '随机整活玩法'
+          component: 'SOFT_GROUP_BEGIN',
+          label: '随机整活'
         },
         {
           field: 'enableFun',
@@ -146,8 +148,8 @@ export function supportGuoba () {
           }
         },
         {
-          component: 'Divider',
-          label: '新玩法'
+          component: 'SOFT_GROUP_BEGIN',
+          label: '互动玩法'
         },
         {
           field: 'nestMaxSteps',
@@ -184,8 +186,8 @@ export function supportGuoba () {
           componentProps: { min: 10, max: 300 }
         },
         {
-          component: 'Divider',
-          label: '黑名单 / 群开关'
+          component: 'SOFT_GROUP_BEGIN',
+          label: '权限管理'
         },
         {
           field: 'disabledGroups',
@@ -221,8 +223,8 @@ export function supportGuoba () {
           }
         },
         {
-          component: 'Divider',
-          label: '列表与搜索'
+          component: 'SOFT_GROUP_BEGIN',
+          label: '列表搜索'
         },
         {
           field: 'pageSize',
@@ -246,8 +248,8 @@ export function supportGuoba () {
           componentProps: { min: 1, max: 20 }
         },
         {
-          component: 'Divider',
-          label: '出图'
+          component: 'SOFT_GROUP_BEGIN',
+          label: '出图设置'
         },
         {
           field: 'img_type',
@@ -276,8 +278,8 @@ export function supportGuoba () {
           componentProps: { min: 0, max: 3600 }
         },
         {
-          component: 'Divider',
-          label: 'Web 预览站'
+          component: 'SOFT_GROUP_BEGIN',
+          label: '网页预览'
         },
         {
           field: 'enableWeb',
@@ -340,8 +342,8 @@ export function supportGuoba () {
           componentProps: { min: 0, max: 5000, step: 50 }
         },
         {
-          component: 'Divider',
-          label: '更新与部署'
+          component: 'SOFT_GROUP_BEGIN',
+          label: '资源更新'
         },
         {
           field: 'memePm2Name',
@@ -406,6 +408,10 @@ export function supportGuoba () {
           label: 'GitHub 代理前缀',
           bottomHelpMessage: '默认 https://ghfast.top/ ：国内直连 github.com 基本不通，走镜像才能拉到表情仓库。机器能直连（或配了系统级 git 代理）就清空这一项，直连更快；镜像挂了也清空，直连和另一个镜像会自动兜底',
           component: 'Input'
+        },
+        {
+          component: 'SOFT_GROUP_BEGIN',
+          label: '服务部署'
         },
         {
           field: 'pipIndexUrl',

@@ -110,7 +110,24 @@ git clone --depth=1 https://github.com/cchanlan/meme-plugin.git ./plugins/meme-p
 
 ## 配置
 
-改 `config/config.yaml`，或装了锅巴就在面板里点。常用几项：
+改 `config/config.yaml`，或打开锅巴面板 → 插件配置 → **meme 插件**，按页签选择模块：
+
+| 页签 | 配置内容 |
+| --- | --- |
+| 服务接入 | 画图服务地址、请求超时、服务归属 |
+| 触发设置 | 指令前缀、回复引用、图片限制、主人保护 |
+| 随机整活 | 整活开关、冷却、数量、转发方式、安全表情与排除词 |
+| 互动玩法 | 套娃层数与体积、全员表情人数、猜表情开关与时限 |
+| 权限管理 | 群开关、用户黑名单、表情黑名单 |
+| 列表搜索 | 分页数量、搜索预览数量、分类门槛 |
+| 出图设置 | 图片格式、浏览器空闲关闭时间 |
+| 网页预览 | 网页开关与地址、在线生成、发群 / 私发、预览缓存 |
+| 资源更新 | 服务进程名、表情仓库目录与订阅、GitHub 代理前缀 |
+| 服务部署 | pip 镜像、部署服务名、端口、装法、Docker 镜像 |
+
+手机端左右滑动顶部页签切换模块，配置项竖排显示；仓库表格可横向滑动。切换页签保留未保存的修改，改完统一点**保存**。
+
+常用几项：
 
 | 配置 | 默认 | 干什么的 |
 | --- | --- | --- |
@@ -137,7 +154,7 @@ git clone --depth=1 https://github.com/cchanlan/meme-plugin.git ./plugins/meme-p
 - **一生成就失败、提示「不接受生成请求」** —— 地址那头不是配套的 meme-generator（常见是填成了本插件的网页预览站，或别的机器人服务）。发 `#meme部署状态`，里面那行「生成接口」会直接告诉你探测结果
 - **容器 / WSL 里部署** —— 容器内装不了 docker，请用 `#meme部署 venv`；或者把 `memeApiUrl` 指到宿主机 / 外部现成的服务
 - **docker 装完表情很少** —— 宿主的表情目录没共享给 Docker：Windows / macOS 的 Docker Desktop 到设置里把该磁盘加进去，再发一次 `#meme部署 docker`
-- **表情仓库全拉不下来** —— GitHub 直连不通（`Connection was reset` / `port 443` 超时）。插件会自动改用 `ghfast.top`、`ghproxy.net` 两个镜像重试；镜像也不行的话，去锅巴把「GitHub 代理前缀」填成你自己的代理前缀，再发 `#meme更新`
+- **表情仓库全拉不下来** —— GitHub 直连不通（`Connection was reset` / `port 443` 超时）。插件会自动改用 `ghfast.top`、`ghproxy.net` 两个镜像重试；镜像也不行的话，打开锅巴面板 → meme 插件 → 资源更新，把「GitHub 代理前缀」填成你自己的代理前缀，再发 `#meme更新`
 - **镜像拉不动** —— 把配置 `dockerImage` 换成官方的 `ghcr.io/memecrafters/meme-generator:0.1.14`，再发一次命令（拉过的层不会重下）
 - **更新了但表情没变多** —— 十成是 `reposDir` 没填，见上面的警告
 - **网页打不开** —— `webUrl` 没填对外地址，或端口没放行
